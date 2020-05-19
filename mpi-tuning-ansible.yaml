@@ -1,0 +1,130 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: Limit to CentOS 7 hosts
+  hosts: all
+  tasks:
+    - name: group hosts based on their OS
+      group_by:
+        key: os_{{ ansible_facts['distribution'] }}_{{ ansible_facts['distribution_major_version'] }}
+      tags: [ always, never ]
+
+- name: GCP system optimization for HPC
+  hosts: os_CentOS_7
+  become: yes
+  vars:
+    grub_default: /etc/default/grub
+    ncpus: "{{ansible_processor_cores * ansible_processor_count}}"
+    sysctl_config:
+      net.ipv4.tcp_rmem: 4096 87380 16777216
+      net.ipv4.tcp_wmem: 4096 16384 16777216
+  tasks:
+  - name: Adds noht if not present
+    lineinfile:
+      path: "{{grub_default}}"
+      regexp: '^GRUB_CMDLINE_LINUX="(((?!noht).)*)"$'
+      line:   'GRUB_CMDLINE_LINUX="\1 noht"'
+      backrefs: yes
+    notify:
+      - write_grub
+    tags: [ nosmt, never]
+  - name: Adds nosmt if not present
+    lineinfile:
+      path: "{{grub_default}}"
+      regexp: '^GRUB_CMDLINE_LINUX="(((?!nosmt).)*)"$'
+      line:   'GRUB_CMDLINE_LINUX="\1 nosmt"'
+      backrefs: yes
+    notify:
+      - write_grub
+    tags: [ nosmt, never ]
+  - name: Adds nr_cpus={{ncpus}} if not present
+    lineinfile:
+      path: "{{grub_default}}"
+      regexp: '^GRUB_CMDLINE_LINUX="(((?!nr_cpus=).)*)"$'
+      line:   'GRUB_CMDLINE_LINUX="\1 nr_cpus={{ncpus}}"'
+      backrefs: yes
+    notify:
+      - write_grub
+    tags: [ nosmt, never ]
+
+  - name: Set tuned-adm profile to network-latency
+    shell: tuned-adm profile network-latency || /bin/true
+    tags: [ networklatency, never]
+
+  - name: Adjust TCP memory
+    sysctl:
+       name: '{{ item.key }}'
+       value: '{{ item.value }}'
+       sysctl_set: yes
+       state: present
+       reload: yes
+       ignoreerrors: yes
+    with_dict: '{{ sysctl_config }}'
+    tags: [ tcpmem, never ]
+
+  - name: configure system limits
+    pam_limits:
+      domain: '*'
+      limit_type: "{{item.limit_type}}"
+      limit_item: "{{item.limit_item}}"
+      value: "{{item.value}}"
+    with_items:
+        - { limit_type: '-', limit_item: 'nproc', value: 'unlimited' }
+        - { limit_type: '-', limit_item: 'memlock', value: 'unlimited' }
+        - { limit_type: '-', limit_item: 'stack', value: 'unlimited' }
+        - { limit_type: '-', limit_item: 'nofile', value: 1048576 }
+        - { limit_type: '-', limit_item: 'cpu', value: 'unlimited' }
+        - { limit_type: '-', limit_item: 'rtprio', value: unlimited }
+    tags: [ limits, never ]
+
+  - name: Disable SELinux service
+    selinux:
+      state: disabled
+    register: disablingSE
+    notify: Reboot
+    tags: [ noselinux, never ]
+
+  - name: Disable firewalld service
+    systemd:
+      name: firewalld
+      state: stopped
+      enabled: no
+      masked: yes
+    tags: [ nofirewalld, never ]
+
+  - name: Remove CPU vulnerabilities mitigations
+    lineinfile:
+      path: "{{grub_default}}"
+      regexp: '^GRUB_CMDLINE_LINUX="(((?!spectre_v2=off nopti spec_store_bypass_disable=off).)*)"$'
+      line: 'GRUB_CMDLINE_LINUX="\1 spectre_v2=off nopti spec_store_bypass_disable=off"'
+      backrefs: yes
+    notify: write_grub
+    tags: [ nomitigation, never ]
+
+  handlers:
+  - name: Determine if using UEFI
+    set_fact:
+      grub_config: "{{ (ansible_mounts | selectattr('mount', 'contains', '/boot/efi') | list | length > 0) | ternary( '/etc/grub2-efi.cfg', '/etc/grub2.cfg' ) }}"
+    listen: write_grub
+  - name: Get config path for grub
+    command: readlink -e {{grub_config}}
+    register: grub_file
+    listen: write_grub
+  - name: Write grub configuration
+    command: grub2-mkconfig -o {{ grub_file.stdout }}
+    listen: write_grub
+    notify: Reboot
+  - name: Reboot Required
+    reboot:
+    listen: Reboot
