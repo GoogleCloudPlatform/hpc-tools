@@ -47,7 +47,7 @@ dryrun=0
 
 LOG()
 {
-  if [ ${dryrun} = 0 ]; then
+  if [[ ${dryrun} = 0 ]]; then
     printf "%s\n" "$*" >&2
   else
     printf "# %s\n" "$*" >&2
@@ -75,7 +75,7 @@ cleanup()
 {
   trap - INT EXIT
   if [[ "$need_reboot" = 1 ]]; then
-    if [[ "$IN_ERROR" = true ]]; then
+    if [[ "$IN_ERROR" = "true" ]]; then
       echo "Execution aborted, reboot pending"
       exit 1
     fi
@@ -220,7 +220,7 @@ show_usage()
     --tcpmem           Increase memory for TCP
     --networklatency   Enable busy polling and low network latency profile
     --limits           Change the system ulimits
-    --nosmt            Disable simultaneous multi threading (reboot requried)
+    --nosmt            Disable simultaneous multi threading (reboot required)
     --nofirewalld      Disable firewalld
     --noselinux        Disable SE Linux (reboot required)
     --nomitigation     Disable CPU vulnerabilities mitigations (reboot required)
@@ -250,7 +250,7 @@ get_grub_cfg() {
     grubconf=$(readlink -e /etc/grub2.cfg)
   fi
 
-  if [ ! -z "$grubconf" ]; then
+  if [[ ! -z "$grubconf" ]]; then
     LOGV "Location of grub.cfg: $grubconf"
     GRUB_FILE=$grubconf
   fi
@@ -260,7 +260,7 @@ tune_tcpmem() {
   LOG "Updating sysctl: TCP memory"
   update_sysctl net.ipv4.tcp_rmem 4096 87380 16777216
   update_sysctl net.ipv4.tcp_wmem 4096 16384 16777216
-# sysctl -p
+  sysctl -p
 }
 
 tune_networklatency() {

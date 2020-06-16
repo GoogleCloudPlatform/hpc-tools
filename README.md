@@ -1,7 +1,6 @@
 # Cloud MPI
 
-This repository contains a list of tunings to get better performance for HPC applications. Effect of each of these tuning depends from application to application. In some cases, a particular tuning may have a negative effect on the performance. Hence the user is advised to experiment with these to identify the right set of tuning for their workload.  The directory contains both bash and ansible scripts.
-
+This repository contains scripts for tunings presented in [Best practices for running tightly coupled HPC applications on Compute Engine](https://cloud.google.com/solutions/best-practices-for-using-mpi-on-compute-engine). Tightly coupled High Performance Computing (HPC) workloads often use MPI to communicate between processes and instances. Proper tuning of the underlying systems and network infrastructure is essential for optimal MPI performance. If you run MPI-based code in Google Cloud, use these practices to get the best possible performance. The benefits of each of these tuning depends from application to application. In some cases, a particular tuning may have a negative effect on the performance. Hence the user is advised to experiment with these to identify the right set of tuning for their workload.  This repository contains both bash and ansible scripts.
 
 ##  Ansible Scripts
 
@@ -44,7 +43,7 @@ The following options are available
     --tcpmem           Increase memory for TCP
     --networklatency   Enable busy polling and low network latency profile
     --limits           Change the system ulimits
-    --nosmt            Disable simultaneous multi threading (reboot requried)
+    --nosmt            Disable simultaneous multi threading (reboot required)
     --nofirewalld      Disable firewalld
     --noselinux        Disable SE Linux (reboot required)
     --nomitigation     Disable CPU vulnerabilities mitigations (reboot required)
