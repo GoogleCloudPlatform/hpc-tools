@@ -1,0 +1,373 @@
+#!/bin/bash
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MPI installation script
+# This script handles the installation of Intel MPI 2018, Intel HPC platform
+# specification related contents (Intel MKL, ICC, DAAL, IPP, etc.) for
+# MPI application. This script is intended to be used on Google Cloud HPC Image.
+# and is validated on GCP CentOS 7 image only.
+
+readonly RPM_DOWNLOAD="/tmp/rpm_download/"
+readonly DEFAULT_INSTALL_DIR="/opt/intel"
+readonly MOTD="/etc/motd"
+
+# Set some default values:
+intel_compliance=0
+intel_mpi=0
+intel_psxe_runtime=0
+intel_comp_meta=0
+intel_python=0
+intel_checker=0
+dryrun=0
+show_usage=1
+
+# Default target directory is /opt/intel/, set to "" for setopts
+prefix=${DEFAULT_INSTALL_DIR}
+
+# Package list
+PREREQ_RPM_LIST=(
+"yum-utils"
+)
+
+INTEL_META_DEPENDENCIES=(
+"compat-libstdc++-33"
+"tcl"
+"openssl098e"
+"nss-pam-ldapd-0.8.13"
+)
+
+INTEL_META_PKGS=(
+"intel-hpc-platform-core"
+"intel-hpc-platform-core-advisory"
+"intel-hpc-platform-core-intel-runtime"
+"intel-hpc-platform-hpc-cluster"
+"intel-hpc-platform-core-intel-runtime-advisory"
+"intel-hpc-platform-compat-hpc"
+"intel-hpc-platform-compat-hpc-advisory"
+)
+
+INTEL_PSXE_RUNTIME_DEPENDENCIES=(
+"gcc"
+"libstdc++-devel"
+"tcsh"
+)
+
+INTEL_PSXE_RUNTIME_PKGS=(
+"intel-psxe-common-runtime-2018.4-274"
+"intel-comp-common-runtime-2018.4-274"
+"intel-comp-runtime-64bit-2018.4-274.x86_64"
+"intel-tbb-common-runtime-2018.4-274"
+"intel-tbb-libs-runtime-64bit-2018.4-274.x86_64"
+"intel-tbb-runtime-64bit-2018.4-274.x86_64"
+"intel-daal-common-runtime-2018.4-274"
+"intel-daal-runtime-64bit-2018.4-274.x86_64"
+"intel-icc-common-runtime-2018.4-274"
+"intel-openmp-runtime-64bit-2018.4-274.x86_64"
+"intel-icc-runtime-64bit-2018.4-274.x86_64"
+"intel-ifort-common-runtime-2018.4-274"
+"intel-mpi-runtime-64bit-2018.4-274.x86_64"
+"intel-ifort-runtime-64bit-2018.4-274.x86_64"
+"intel-ipp-common-runtime-2018.4-274"
+"intel-ipp-runtime-64bit-2018.4-274.x86_64"
+"intel-mkl-common-runtime-2018.4-274"
+"intel-mkl-runtime-64bit-2018.4-274.x86_64"
+)
+
+INTEL_MPI_PKGS=(
+"intel-mpi-runtime-64bit-2018.4-274.x86_64"
+)
+
+INTEL_PYTHON_PKGS=(
+"intelpython3"
+)
+
+CLCK_PKGS=(
+"intel-clck-2019.10-060"
+)
+
+# RPM Repo
+INTEL_META_REPO="http://yum.repos.intel.com/hpc-platform/el7/setup/intel-hpc-platform.repo"
+INTEL_PSXE_RUNTIME_REPO="https://yum.repos.intel.com/2018/setup/intel-psxe-runtime-2018-reposetup-1-0.noarch.rpm"
+INTEL_PYTHON_REPO="https://yum.repos.intel.com/intelpython/setup/intelpython.repo"
+CLCK_REPO="https://yum.repos.intel.com/clck/2019/setup/intel-clck-2019.repo"
+
+#  GPG public key for the repository
+INTEL_META_PUB="http://yum.repos.intel.com/hpc-platform/el7/setup/PUBLIC_KEY.PUB"
+INTEL_PSXE_RUNTIME_PUB="https://yum.repos.intel.com/2018/setup/RPM-GPG-KEY-intel-psxe-runtime-2018"
+CLCK_PUB="https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB"
+
+usage()
+{
+  cat <<EOF
+  Usage:
+    Verify installation steps: $(basename "$0") [options] --dryrun
+    Apply installation: $(basename "$0") [options]
+
+  Options:
+    -h | --help          Display help message
+    --dryrun             Do not execute commands
+    --prefix             Configure the prefix directory for installations 
+                         Default location is set to /opt/intel
+    --intel_checker      Install Intel(R) Cluster Checker
+    --intel_compliance   Configure environment in compliance with Intel(R) HPC 
+                         platform specification. Include Intel(R) HPC Platform 
+                         Specification meta-packages, Intel(R) Performance 
+                         Libraries and Intel(R) Distribution for Python
+    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018 
+    --intel_comp_meta    Install Intel(R) HPC Platform Specification
+                         meta-packages
+    --intel_mpi          Install Intel(R) MPI 2018 (Recommended version
+                         for running MPI jobs on Google Cloud)
+    --intel_python       Install latest Intel(R) Distribution for Python
+EOF
+}
+
+run() {
+  if [[ "$dryrun" = 1 ]]; then
+    echo "$*"
+  else
+    eval "$*"
+  fi
+}
+
+add_motd()
+{
+  if [[ "${dryrun}" = 0 ]]; then
+    grep -qF -- "$1" "${MOTD}" || echo "$1" >> "${MOTD}"
+    echo "$1"
+  fi
+}
+
+check_root()
+{
+  if [[ "$EUID" -ne 0 ]] && [[ "$dryrun" = 0 ]]; then
+    echo "Please run this script as root"
+    exit 1
+  fi
+}
+
+install_prereqs()
+{
+  for package in ${PREREQ_RPM_LIST[@]}; do
+    # install the package
+    run yum install -y "${package}"
+  done
+}
+
+# Install rpms to prefix dir.
+package_install()
+{
+    # Download rpm packages
+    run yumdownloader -y --destdir=${RPM_DOWNLOAD}/$1 --resolve $1
+    # Install rpm packages to the target
+    if [[ $# = 1 ]]; then
+      run rpm -ivh ${RPM_DOWNLOAD}/$1/*
+    elif [[ $# = 2 ]]; then
+      run rpm -ivh --prefix=$2/ ${RPM_DOWNLOAD}/$1/*
+    fi
+    # Clean up the rpm packages in tmp directory
+    run rm -rf ${RPM_DOWNLOAD}/$1/
+}
+
+# Install Intel HPC platform specification compliance meta-packages
+intel_compliance_meta()
+{
+  # Set up repo
+  run yum-config-manager -y --add-repo ${INTEL_META_REPO}
+  run rpm --import ${INTEL_META_PUB}
+
+  for package in ${INTEL_META_DEPENDENCIES[@]}; do
+    # Install dependency packages
+    run yum install -y ${package}
+  done
+
+  for package in ${INTEL_META_PKGS[@]}; do
+    run package_install ${package}
+  done
+}
+
+#  Install Intel Parallel Studio XE Runtime
+intel_psxe_runtime()
+{
+
+  # Set up repo
+  run rpm --import ${INTEL_PSXE_RUNTIME_PUB}
+  run yum -y install ${INTEL_PSXE_RUNTIME_REPO}
+
+  for package in ${INTEL_PSXE_RUNTIME_DEPENDENCIES[@]}; do
+    # Install dependency packages
+    run yum install -y ${package}
+  done
+
+  for package in ${INTEL_PSXE_RUNTIME_PKGS[@]}; do
+    package_install ${package} ${prefix}/
+  done
+}
+
+# Install Intel MPI 2018
+intel_mpi()
+{
+  # Set up repo. Use the same repo as psxe runtime.
+  run rpm --import ${INTEL_PSXE_RUNTIME_PUB}
+  run yum -y install ${INTEL_PSXE_RUNTIME_REPO}
+
+  for package in ${INTEL_PSXE_RUNTIME_DEPENDENCIES[@]}; do
+    # Install dependency packages
+    run yum install -y ${package}
+  done
+
+  for package in ${INTEL_MPI_PKGS[@]}; do
+    package_install ${package} ${prefix}/
+  done
+
+  # Install mpitune configurations
+  run source ${prefix}/psxe_runtime/linux/bin/psxevars.sh
+  run google_install_mpitune --force
+}
+
+# Install Intel distributed Python
+intel_python()
+{
+  # Set up repo
+  run yum-config-manager -y --add-repo ${INTEL_PYTHON_REPO}
+
+  for package in ${INTEL_PYTHON_PKGS[@]}; do
+    package_install ${package} ${prefix}/
+  done
+}
+
+#Install Intel cluster checker
+intel_checker()
+{
+  # Set up repo
+  run rpm --import ${CLCK_PUB}
+  run yum-config-manager -y --add-repo ${CLCK_REPO}
+
+  for package in ${CLCK_PKGS[@]}; do
+    package_install ${package} ${prefix}/
+  done
+}
+
+setopts()
+{
+  VALID_ARGUMENTS=$?
+  if [ "$VALID_ARGUMENTS" != "0" ]; then
+    echo "Invalid option inputs."
+    usage
+    exit 1
+  fi
+
+  eval set -- "$PARSED_ARGUMENTS"
+  while true;
+  do
+    if [[ "$1" = "-h" ]] || [[ "$1" = "--help" ]]; then
+      usage
+      exit 0
+    elif [[ "$1" = "--intel_checker" ]]; then
+      intel_checker=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--prefix" ]]; then
+      shift
+      prefix=$1
+      shift
+    elif [[ "$1" = "--intel_compliance" ]]; then
+      intel_compliance=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--intel_psxe_runtime" ]]; then
+      intel_psxe_runtime=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--intel_comp_meta" ]]; then
+      intel_comp_meta=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--intel_mpi" ]]; then
+      intel_mpi=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--intel_python" ]]; then
+      intel_python=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--dryrun" ]]; then
+      dryrun=1
+      shift
+    elif [[ "$1" = "--" ]]; then
+      shift
+      break
+    else
+      echo "Unexpected option: $1"
+      usage
+      exit 1
+    fi
+  done
+
+}
+
+cleanup()
+{
+  echo "Installation complete"
+
+  # Source the Intel psxe runtime if installed
+  if [[ "$intel_compliance" = 1 || "$intel_psxe_runtime" = 1 || "$intel_mpi" = 1 ]]; then
+    # Install pre-tuned MPI configurations
+    add_motd "Enable Intel(R) MPI Libraries and Intel(R) Parallel Studio XE Runtime with:"
+    add_motd "source ${prefix}/psxe_runtime/linux/bin/psxevars.sh"
+  fi
+
+  # Enable the Intel distribution for Python if installed
+  if [[ "$intel_compliance" = 1 || "$intel_python" = 1 ]]; then
+    add_motd "Enable Intel(R) Distribution for Python with:"
+    add_motd "export PATH=${prefix}/intelpython3/bin/:$PATH"
+  fi
+
+  # Source the Intel cluster checker if installed
+  if [[ "$intel_compliance" = 1 || "$intel_checker" = 1 ]]; then
+    add_motd "Enable Intel(R) Cluster Checker with:"
+    add_motd "source ${prefix}/clck/2019.10/bin/clckvars.sh"
+  fi
+  run rm -rf ${RPM_DOWNLOAD}
+}
+
+PARSED_ARGUMENTS=$(getopt -q -n new_cmd -o h \
+    --long intel_checker,dryrun,intel_compliance,intel_mpi,intel_psxe_runtime,\
+intel_comp_meta,intel_python,help,prefix: -- "$@")
+setopts
+if [[ "$show_usage" = 1 ]]; then
+ usage
+ exit 0
+fi
+
+check_root
+
+if [[ ! -d $1 ]]; then
+  echo "Create the prefix directory."
+  run mkdir -p ${prefix}
+fi
+
+# Condition checking
+echo "Check and install the prerequisite packages to run this script"
+install_prereqs
+
+# Execution
+[[ "$intel_compliance" = 1 || "$intel_comp_meta" = 1 ]] && intel_compliance_meta
+[[ "$intel_mpi" = 1 ]] && intel_mpi
+[[ "$intel_compliance" = 1 || "$intel_psxe_runtime" = 1 ]] && intel_psxe_runtime
+[[ "$intel_compliance" = 1 || "$intel_python" = 1 ]] && intel_python
+[[ "$intel_compliance" = 1 || "$intel_checker" = 1 ]] && intel_checker
+
+cleanup

@@ -18,12 +18,14 @@ ansible-playbook mpi-tuning-ansible.yaml -i hostfile --tags [tcpmem,networklaten
 The following tags can be used
 
 1. tcpmem - Increase memory for TCP
-1. networklatency - Enable busy polling and low network latency profile
+1. networklatency - Enable busy polling and low network latency tuned profile
 1. limits - Change the system ulimits
 1. nosmt - Disable simultaneous multi threading
 1. nofirewalld - Disable firewalld
 1. noselinux - Disable SE Linux
 1. nomitigation - Disable CPU vulnerabilities mitigations
+1. hpcprofile - (Bash only) Apply the tuned profile including the following:
+                tcpmem, networklatency (busypoll), nosmt, noselinux
 
 ## Bash Scripts
 
@@ -40,10 +42,11 @@ The following options are available
     Apply tunings: mpi-tuning.sh [options]
 
   Options:
+    --hpcprofile       Install and apply google-hpc-compute tuned profile
+                       Also applies: --tcpmem, --limits
     --tcpmem           Increase memory for TCP
-    --networklatency   Enable busy polling and low network latency profile
     --limits           Change the system ulimits
-    --nosmt            Disable simultaneous multi threading (reboot required)
+    --nosmt            Disable simultaneous multi threading
     --nofirewalld      Disable firewalld
     --noselinux        Disable SE Linux (reboot required)
     --nomitigation     Disable CPU vulnerabilities mitigations (reboot required)
@@ -53,13 +56,45 @@ The following options are available
     --help             Show help message
 ```
 
+
+Use `google_install_mpi` to install IntelMPI environment on indvidual VMs.
+
+```shell
+sudo google_install_mpi [options]
+```
+
+The following options are available
+```shell
+  Usage:
+    Verify installation steps: google_install_mpi  [options] --dryrun
+    Apply IntelMPI environment installation: google_install_mpi  [options]
+
+  Options:
+    -h | --help          Display help message
+    --dryrun             Do not execute commands
+    --prefix             Configure the prefix directory for installations 
+                         Default location is set to /opt/intel
+    --intel_checker      Install Intel(R) Cluster Checker
+    --intel_compliance   Configure environment in compliance with Intel(R) HPC 
+                         platform specification. Include Intel(R) HPC Platform 
+                         Specification meta-packages, Intel(R) Performance 
+                         Libraries and Intel(R) Distribution for Python
+    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018 
+    --intel_comp_meta    Install Intel(R) HPC Platform Specification
+                         meta-packages
+    --intel_mpi          Install Intel(R) MPI 2018 (Recommended version
+                         for running MPI jobs on Google Cloud)
+    --intel_python       Install latest Intel(R) Distribution for Python
+```
+
+
 ## MPI Collectives tuning configurations
 
 Directory mpitune-configs/intelmpi-2018 contains output configurations from Intel MPI collective tunings performed on c2-standard-60 with placement groups.
 
-To use these tuning files, copy these files to
+To use these tuning files, install the Intel MPI library 2018, source the `mpivars.[c]sh` script to set up the proper environment, then run the installation script:
 ```shell
-$MPIHOME/compilers_and_libraries_2018/linux/mpi/etc64
+./google_install_mpitune
 ```
 
 Tuning configuration needs to be available for the combination of the number of VMs and the number of processes per VM. If it is not available, you can use mpitune utility. For example, to tune for 22 VMs and 30 processes per VM, run the following:
@@ -74,3 +109,30 @@ To make use of the tuning configuration for an application add -tune option to m
 mpirun -tune -hostfile hostfile -genv I_MPI_FABRICS ‘shm:tcp’ -np 660 -ppn 30 ./app
 ```
 
+## Building `google-hpc-compute` package
+
+`google-hpc-compute` is a package that applies the bash tuning script and installs the MPI collectives tuning configurations. This package is pre-installed on the HPC VM image.
+
+Currently only CentOS 7 RPM package is supported.
+
+To build this package, install `rpm-build` and run the `build_rpm.sh` script.
+```shell
+./packaging/build_rpm.sh
+```
+
+The package will be built in `/tmp/rpmpackage`, to install, use `yum` or `rpm` command:
+```shell
+sudo yum install /tmp/rpmpackage/RPMS/x86_64/google-hpc-compute-20200818.00-g1.el7.x86_64.rpm
+```
+This will apply all tunings (except for `--nomitigation`) and install the content of this project to the following locations:
+
+- Tuning script: `/usr/bin/google_mpi_tuning`
+- Mpitune installation script: `/usr/bin/google_install_mpitune`
+- Collective tuning configurations: `/usr/share/google-hpc-compute`
+
+Using the tuning script (renamed as `google_mpi_tuning`) to apply the `--nomitigation` tuning (and reboot) manually:
+```shell
+sudo google_mpi_tuning --nomitigation --reboot
+```
+
+Users can opt-out the tunings by removing this package.

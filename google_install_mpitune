@@ -1,0 +1,138 @@
+#!/bin/bash
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -e
+
+readonly TARGET="intelmpi-2018"
+
+SRCROOT=""
+SUDO=""
+CONFIRM_OVERRIDE=0
+
+# check if I_MPI_ROOT present
+check_mpi()
+{
+  if [[ ! ${I_MPI_ROOT} ]]; then
+    echo "Error: I_MPI_ROOT not found."
+    echo "Please source the mpivars.[c]sh script to set up the proper environment for Intel MPI Library."
+    exit 1
+  fi
+  echo "I_MPI_ROOT: ${I_MPI_ROOT}"
+}
+
+# check MPI release version
+check_ver()
+{
+  local intelver=$(mpirun -info | grep Version | awk '{print $2}')
+  if [[ ${intelver} != "2018" ]]; then
+    echo "Error: Only Intel MPI Libarary, Version 2018 is supported."
+    exit 1
+  fi
+}
+
+# check instance type
+check_instance_type() {
+  local url="http://metadata.google.internal/computeMetadata/v1/instance/"
+  local machine_type="$(curl --max-time 1 -f -s -H Metadata-Flavor:Google ${url}/machine-type | cut -d'/' -f4)"
+
+  if [[ ! ${machine_type} == "c2-standard-60" ]]; then
+    echo "Warning: the mpitune configurations are validated on c2-standard-60 instances."
+    echo "This VM is running a different machine type: ${machine_type}."
+  fi
+}
+
+# check if the ancillary scripts exist
+check_folder()
+{
+  # Tuning scripts in current folder (from hpc-tools repo)
+  local gitpath="$(pwd)/mpitune-configs/$TARGET"
+  # Tuning scripts in _datadir (from google-hpc-compute package)
+  local rpmpath="$(rpm --eval "%{_datadir}")/google-hpc-compute/mpitune-configs/$TARGET"
+  if [ -d $gitpath ]; then
+    SRCROOT=$gitpath
+    echo "Using tuning scripts at ${SRCROOT}"
+  elif [ -d $rpmpath ]; then
+    SRCROOT=$rpmpath
+    echo "Using tuning scripts at ${SRCROOT}"
+  else
+    echo "Error: Cannot find tuning scripts."
+    exit 1
+  fi
+}
+
+do_install()
+{
+  ${SUDO} cp -ar ${SRCROOT}/* ${I_MPI_ROOT}/etc64
+  echo "google_install_mpitune: Installation complete."
+  exit 0
+}
+
+# install prompt
+prompt_install()
+{
+  echo "Will install mpitune scripts to ${I_MPI_ROOT}/etc64."
+  while true; do
+    read -p "Do you wish to continue? " yn
+    case $yn in
+        [Yy]* ) do_install; exit;;
+        [Nn]* ) exit;;
+        * ) echo "Please answer yes or no.";;
+    esac
+  done
+}
+
+show_usage()
+{
+  cat <<EOF
+  Usage:
+    Install mpitune configurations: $(basename "$0") [options]
+
+  Options:
+    --force           Silent installation
+    --sudo            Use sudo
+    --help            Show help message
+EOF
+}
+
+# main routine
+while [[ "$1" =~ "--" ]]; do
+  if [[ "$1" = "--force" ]]; then
+    CONFIRM_OVERRIDE=1
+    shift
+    continue
+  elif [[ "$1" = "--sudo" ]]; then
+    SUDO="sudo"
+    shift
+    continue
+  elif [[ "$1" = "--help" ]] || [[ "$1" = "-h" ]]; then
+    show_usage
+    exit 0
+  else
+    echo "Unrecognized option $1"
+    show_usage
+    exit 0
+  fi
+done
+
+check_mpi
+check_ver
+check_instance_type
+check_folder
+if [[ "$CONFIRM_OVERRIDE" -eq 1 ]]; then
+  do_install
+else
+  prompt_install
+fi
+
