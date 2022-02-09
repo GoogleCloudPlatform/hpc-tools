@@ -18,6 +18,7 @@
 # - The queue count is set to align with the physical CPU core count
 # - Apply XPS to all physical cores
 # - Apply tunings validated on a set of HPC workloads
+# - For AMD EPYC processors, spread IRQ mappings across LLC slices
 
 VIRTIO_NET_DIR=/sys/bus/virtio/drivers/virtio_net
 VIRTIO_NET_DEVS=${VIRTIO_NET_DIR}/virtio*
@@ -42,6 +43,10 @@ function get_phy_cpus() {
 
   nr_per_socket=$((nr_phy_cpus/nr_socket))
 
+  # check AMD EPYC CPUs
+  epyc_check=$(cat /proc/cpuinfo | grep EPYC)
+  [[ -z ${epyc_check} ]] && is_epyc=false || is_epyc=true
+
   [[ -z ${nr_socket} ]] && set_multiqueue_fallback
   [[ -z ${nr_phy_cpus} ]] && set_multiqueue_fallback
   [[ -z ${nr_per_socket} ]] && set_multiqueue_fallback
@@ -52,16 +57,21 @@ function get_phy_cpus() {
 
 function set_virtionet_channels() {
   max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 Combined | cut -f2)
+  num_channels=${max_channels}
   [[ "${max_channels}" -eq "1" ]] && return
 
   # max_channels is not an integer
   [[ ! "${max_channels}" -eq "${max_channels}" ]] && return
 
   # use nr_phy_cpus as queue count
-  [[ ${nr_phy_cpus} -lt ${max_channels} ]] && max_channels=${nr_phy_cpus}
+  [[ ${nr_phy_cpus} -lt ${max_channels} ]] && num_channels=${nr_phy_cpus}
 
-  echo "Set channels for $eth_dev to $max_channels."
-  ethtool -L "${eth_dev}" combined "${max_channels}" > /dev/null 2>&1
+  # use cpu cores on NUMA node 0 if possible
+  numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
+  [[ ${nr_per_socket} -gt ${numa0_threshold} ]] && num_channels=${nr_per_socket}
+
+  echo "Set channels for $eth_dev to $num_channels."
+  ethtool -L "${eth_dev}" combined "${num_channels}" > /dev/null 2>&1
 }
 
 function set_virtionet_irq() {
@@ -115,6 +125,7 @@ function set_virtionet_irq() {
 
 function set_gvnic_channels() {
   max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 RX | cut -d':' -f2)
+  num_channels=${max_channels}
   [[ -z ${max_channels} ]] && return
   [[ "${max_channels}" -eq "1" ]] && return
 
@@ -124,22 +135,48 @@ function set_gvnic_channels() {
   # use nr_per_socket as queue count
   [[ ${nr_per_socket} -lt ${max_channels} ]] && max_channels=${nr_per_socket}
 
-  echo "Set channels for $eth_dev to $max_channels."
-  ethtool -L "${eth_dev}" rx "${max_channels}" > /dev/null 2>&1
-  ethtool -L "${eth_dev}" tx "${max_channels}" > /dev/null 2>&1
+  # use half of cpu cores on NUMA node 0 if possible
+  numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
+  [[ $((nr_per_socket/2)) -gt ${numa0_threshold} ]] && num_channels=$((nr_per_socket/2))
+
+  echo "Set channels for $eth_dev to $num_channels."
+  ethtool -L "${eth_dev}" rx "${num_channels}" tx "${num_channels}" > /dev/null 2>&1
 }
 
 function set_gvnic_irq() {
-  # Set smp_affinity properly for gvnic queues. '-ntfy-block.' is unique to gve
-  # and will not affect virtio queues.
+  # For AMD EPYC processors, spread IRQs across LLC slices.
+  # For other processors, use the affinity hint.
+  # Set smp_affinity properly for gvnic queues. '-ntfy-block.' is unique to
+  # gve and will not affect virtio queues.
+  epyc_per_irq=$((nr_per_socket/num_channels))
+  txrx=0
   for i in ${IRQ_DIR}; do
     if ls "${i}"/*-ntfy-block.* 1> /dev/null 2>&1; then
       if [[ -f ${i}/affinity_hint ]]; then
-        echo Setting smp_affinity on "${i}" to "$(cat "${i}/affinity_hint")"
-        cp "${i}/affinity_hint" "${i}/smp_affinity"
-        real_affinity=$(cat "${i}/smp_affinity_list")
-        echo "${i}: real affinity ${real_affinity}"
+          cp "${i}/affinity_hint" "${i}/smp_affinity"
       fi
+      hint=$(cat "${i}/smp_affinity_list")
+      # Adjust for EPYC processors
+      if [ ${is_epyc} ] && [ "$hint" -eq "$hint" ] 2>/dev/null; then
+        [ ${hint} -eq 0 ] && txrx=$((txrx+1))
+        irq_dwords=()
+        irq=0
+        cpu=$((hint * epyc_per_irq % nr_per_socket))
+        [ ${txrx} -eq 2 ] && cpu=$((cpu+1))
+        cpu_offset=0
+        if [[ ${cpu} -ge $((cpu_offset + 32)) ]]; then
+          irq_dwords=($(printf "%08x" $((irq & 0xffffffff))) "${irq_dwords[@]}")
+          irq=$((irq >> 32))
+          cpu_offset=$((cpu_offset + 32))
+        fi
+        irq=$((irq | (1 << (cpu - cpu_offset))))
+        [[ ! -z ${irq} ]] && \
+          irq_dwords=($(printf "%08x" $((irq & 0xffffffff))) "${irq_dwords[@]}")
+        irq_string=$(IFS=, ; echo "${irq_dwords[*]}")
+        echo "${irq_string}" > "${i}/smp_affinity"
+      fi
+      real_affinity=$(cat "${i}/smp_affinity_list")
+      echo "${i}: real affinity ${real_affinity}"
     fi
   done
 }
@@ -161,7 +198,7 @@ function set_xps {
     xps_dwords=()
     xps=0
     cpu_offset=0
-    for cpu in $(seq "${queue_num}" "${max_channels}" $((nr_phy_cpus - 1))); do
+    for cpu in $(seq "${queue_num}" "${num_channels}" $((nr_phy_cpus - 1))); do
       if [[ ${cpu} -ge $((cpu_offset + 32)) ]]; then
         xps_dwords=($(printf "%08x" $((xps & 0xffffffff))) "${xps_dwords[@]}")
         xps=$((xps >> 32))
@@ -175,7 +212,7 @@ function set_xps {
     xps_string=$(IFS=, ; echo "${xps_dwords[*]}")
     echo "${xps_string}" > "$q"
     printf "Queue %d XPS=%s for %s\n" "$queue_num" "$(cat "$q")" "$q"
-  done | sort -n -k2
+  done
 }
 
 function set_net_devs {

@@ -29,8 +29,8 @@ readonly LIMITS_CONF="/etc/security/limits.conf"
 readonly LIMITSD_CONF="/etc/security/limits.d/98-google-hpc-image.conf"
 readonly GRUB_DEFAULT="/etc/default/grub"
 readonly SELINUX_CONFIG="/etc/selinux/config"
-readonly HPC_PROFILE="google-hpc-compute"
-readonly HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute/tuned.conf"
+HPC_PROFILE="google-hpc-compute"
+HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute/tuned.conf"
 VMROOT="vmroot"
 GRUB_FILE="/boot/grub2/grub.cfg"
 ACTIVE_PROFILE="unknown"
@@ -261,6 +261,8 @@ show_usage() {
   Options:
     --hpcprofile       Install and apply google-hpc-compute tuned profile
                        Also applies: --tcpmem, --limits
+    --hpcthroughput    Install and apply google-hpc-compute-throughput profile
+                       Also applies: --tcpmem, --limits
     --tcpmem           Increase memory for TCP
     --limits           Change the system ulimits
     --nosmt            Disable simultaneous multi threading
@@ -421,6 +423,14 @@ while [[ "$1" =~ "--" ]]; do
     shift
     continue
   elif [[ "$1" = "--hpcprofile" ]]; then
+    HPC_PROFILE="google-hpc-compute"
+    HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute/tuned.conf"
+    task_hpcprofile=1
+    shift
+    continue
+  elif [[ "$1" = "--hpcthroughput" ]]; then
+    HPC_PROFILE="google-hpc-compute-throughput"
+    HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf"
     task_hpcprofile=1
     shift
     continue

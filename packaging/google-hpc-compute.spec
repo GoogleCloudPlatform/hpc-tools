@@ -61,6 +61,8 @@ install -d %{buildroot}%{_sysconfdir}/security/limits.d
 install -p -m 0644 vmroot/etc/security/limits.d/98-google-hpc-image.conf %{buildroot}%{_sysconfdir}/security/limits.d/98-google-hpc-image.conf
 install -d %{buildroot}/lib/tuned/google-hpc-compute
 install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute/tuned.conf %{buildroot}/lib/tuned/google-hpc-compute/tuned.conf
+install -d %{buildroot}/lib/tuned/google-hpc-compute-throughput
+install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf %{buildroot}/lib/tuned/google-hpc-compute-throughput/tuned.conf
 
 %files
 %defattr(-,root,root,-)
@@ -74,6 +76,7 @@ install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute/tuned.conf %{buildroo
 %{_datadir}/google-hpc-compute/*
 %{_sysconfdir}/security/limits.d/98-google-hpc-image.conf
 /lib/tuned/google-hpc-compute/tuned.conf
+/lib/tuned/google-hpc-compute-throughput/tuned.conf
 
 %pre
 if [ $1 -gt 1 ] ; then
