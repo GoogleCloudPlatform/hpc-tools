@@ -1,0 +1,57 @@
+#!/bin/bash
+# Copyright 2021 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This script is for the startup firstrun to configure software environment.
+# It reads metadata from its compute engine metadata server and conducts the
+# following operations:
+# - MPI environment set up: use google_install_mpi to install MPI software
+# - MPI tuning set up: use google_mpi_tuning to apply system tunings for getting
+#  better performance for MPI application.
+
+URL="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
+MAXTIME=1
+FIRSTRUN="/.google_hpc_firstrun"
+
+function get_attributes()
+{
+  # INSTALL_MPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_mpi)"
+  MPI_TUNE="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_mpi_tuning)"
+}
+
+# function install_mpi()
+# {
+#   if [[ ${INSTALL_MPI} ]]; then
+#      echo "Install MPI environment: google_install_mpi ${INSTALL_MPI}"
+#      google_install_mpi ${INSTALL_MPI}
+#   else
+#      echo "No MPI environment configured through metadata."
+#   fi
+# }
+
+function mpi_tuning()
+{
+  if [[ ${MPI_TUNE} ]]; then
+     echo "MPI tuning configuration: google_mpi_tuning ${MPI_TUNE}"
+     google_mpi_tuning ${MPI_TUNE}
+  else
+     echo "No MPI tuning configured through metadata."
+  fi
+}
+
+rm -f ${FIRSTRUN}
+echo "Google HPC startup firstrun operation."
+get_attributes
+# install_mpi
+mpi_tuning

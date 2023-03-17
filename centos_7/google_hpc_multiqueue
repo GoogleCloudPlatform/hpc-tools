@@ -157,7 +157,7 @@ function set_gvnic_irq() {
       fi
       hint=$(cat "${i}/smp_affinity_list")
       # Adjust for EPYC processors
-      if [ ${is_epyc} ] && [ "$hint" -eq "$hint" ] 2>/dev/null; then
+      if [[ ${is_epyc} == "true" ]] && [[ "$hint" -eq "$hint" ]] 2>/dev/null; then
         [ ${hint} -eq 0 ] && txrx=$((txrx+1))
         irq_dwords=()
         irq=0

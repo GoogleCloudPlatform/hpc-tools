@@ -17,7 +17,8 @@
 # This script applies different system tunings for getting better performance
 # for MPI application.
 # This script is intended to be used on Google Cloud HPC Image.
-# and is validated on GCP CentOS 7 image only.
+# and is validated on GCP Rocky Linux 8 image only.
+
 
 # catch SIGEXIT and SIGINT
 trap 'cleanup' EXIT
@@ -29,23 +30,23 @@ readonly LIMITS_CONF="/etc/security/limits.conf"
 readonly LIMITSD_CONF="/etc/security/limits.d/98-google-hpc-image.conf"
 readonly GRUB_DEFAULT="/etc/default/grub"
 readonly SELINUX_CONFIG="/etc/selinux/config"
-HPC_PROFILE="google-hpc-compute"
-HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute/tuned.conf"
+HPC_PROFILE="google-hpc-compute-throughput"
+HPC_PROFILE_PATH="/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf"
 VMROOT="vmroot"
 GRUB_FILE="/boot/grub2/grub.cfg"
 ACTIVE_PROFILE="unknown"
 
 verbose=false
 
-# major and minor versions of centos-release RPM
-# E.g., for centos-release-7-8.2003.0.el7.centos.x86_64
-# centos_major=7
-# centos_minor=8
-centos_major=0
-centos_minor=0
 
-# el7.7+ kernel installed
-# For CentOS 7.7+, the default kernel (el7) has following options backported:
+# major and minor versions of Rocky Linux Release
+# Current Version : Rocky Linux 8 - 4.18.0-372.9.1.el8.x86_64
+rocky_major=0
+rocky_minor=0
+
+# el8+ kernel installed
+# For Rocky Linux 8.7+, the default kernel (el8) has following options backported:
+# Do not know, need to research on this.
 # - nosmt: disable HT
 # - mitigations=off: disable CPU vulnerability mitigations
 new_elkernel=0
@@ -118,7 +119,7 @@ check_task() {
   [[ "$task_tcpmem" = 0 ]] && [[ "$task_limits" = 0 ]] && \
     [[ "$task_ht" = 0 ]] && [[ "$task_firewall" = 0 ]] && \
     [[ "$task_selinux" = 0 ]] && [[ "$task_mitigations" = 0 ]] && \
-    [[ "$task_hpcprofile" = 0 ]] && \
+    [[ "$task_hpcprofile" = 0 ]] && [[ "$task_interrupt_coalescing" = 0 ]] && \
     LOG "No task(s) selected." && show_usage && exit 1
 }
 
@@ -161,33 +162,33 @@ check_vmroot() {
   fi
 }
 
-# check centos release version
-# allow --dryrun for non-centos 7 system
-check_centos() {
-  centos_major=$(rpm --eval %{centos_ver})
+# check rocky linux release version
+# allow --dryrun for non-rocky 8 system
+check_rocky() {
+  rocky_major=$(rpm --eval %{rocky_ver})
 
-  if [[ $centos_major -ne 7 ]]; then
+  if [[ $rocky_major -ne 8 ]]; then
     if [[ "$dryrun" = 1 ]]; then
-      LOG "This script is only validated on CentOS 7."
+      LOG "This script is only validated on Rocky Linux 8."
     else
-      ERROR "This script is only validated on CentOS 7."
+      ERROR "This script is only validated on Rocky Linux 8."
     fi
   fi
 
-  local centos_ver=$(rpm --query centos-release)
-  local centos_sub=${centos_ver#"centos-release-"}
-  centos_minor=$(echo $centos_sub | awk -F'[.-]' '{print $2}')
+  local rocky_ver=$(rpm --query rocky-release)
+  local rocky_sub=${rocky_ver#"rocky-release-"}
+  rocky_minor=$(echo $rocky_sub | awk -F'[.-]' '{print $2}')
 
-  LOGV "CentOS version: ${centos_major}.${centos_minor}"
+  LOGV "Rocky Linux version: ${rocky_major}.${rocky_minor}"
 }
 
-# check if current kernel is CentOS 7.7+ default
+# check if current kernel is Rocky Linux 8.6+ default
 check_new_elkernel() {
   local uname=$(uname -r)
-  if [[ "$centos_major" -eq 7 ]] && [[ "$centos_minor" -ge 7 ]] && \
-    [[ "$uname" =~ "el7" ]]; then
+  if [[ "$rocky_major" -eq 8 ]] && [[ "$rocky_minor" -ge 8 ]] && \
+    [[ "$uname" =~ "el8" ]]; then
     new_elkernel=1
-    LOGV "Found el7.7+ kernel"
+    LOGV "Found el8+ kernel"
   fi
 }
 
@@ -331,6 +332,19 @@ tune_limits() {
   run ulimit -a
 }
 
+tune_interrupt_coalescing() {
+  LOG "Modifying Interrupt Coalesce settings"
+  DRIVER_NAME=$(ethtool -i ${NIC} | sed -n "s/^driver:\s*//p")
+  if [[ DRIVER_NAME == 'gve' ]];
+    then
+      LOG "Setting values for rx-usecs and tx-usecs to 0"
+      run ethtool -C ${NIC} rx-usecs 0 &> /dev/null
+      run ethtool -C ${NIC} tx-usecs 0 &> /dev/null
+    else
+      LOG "gVNIC driver not enabled"
+  fi
+}
+
 disable_ht_online() {
   if [[ -f /sys/devices/system/cpu/cpu0/topology/thread_siblings_list ]]; then
     for vcpu in $(cat /sys/devices/system/cpu/cpu*/topology/thread_siblings_list | awk -F '[^0-9]' '{ print $2 }'| uniq); do
@@ -371,9 +385,14 @@ tune_firewall() {
 tune_mitigations() {
   LOG "Disabling CPU mitigations"
   local grub_updated=0
-  update_grub_default spectre_v2=off && grub_updated=1
-  update_grub_default nopti && grub_updated=1
-  update_grub_default spec_store_bypass_disable=off
+  if [[ "$new_elkernel" -eq 1 ]]; then
+    update_grub_default mitigations=off && grub_updated=1
+  else
+    update_grub_default spectre_v2=off
+    update_grub_default nopti
+    update_grub_default spec_store_bypass_disable=off
+    grub_updated=1
+  fi
   if [[ "$grub_updated" -eq 1 ]]; then
     update_grub_config
     need_reboot=1
@@ -404,6 +423,10 @@ while [[ "$1" =~ "--" ]]; do
     continue
   elif [[ "$1" = "--limits" ]]; then
     task_limits=1
+    shift
+    continue
+  elif [[ "$1" = "--interrupt_coalescing" ]]; then
+    task_interrupt_coalescing=1
     shift
     continue
   elif [[ "$1" = "--nosmt" ]]; then
@@ -452,7 +475,7 @@ done
 check_task
 check_bin
 check_vmroot
-check_centos
+check_rocky
 check_new_elkernel
 get_active_profile
 get_phy_cpus
@@ -462,6 +485,7 @@ get_grub_cfg
 [[ "$task_all" = 1 || "$task_hpcprofile" = 1 ]] && tune_hpcprofile
 [[ "$task_all" = 1 || "$task_tcpmem" = 1 ]] && tune_tcpmem
 [[ "$task_all" = 1 || "$task_limits" = 1 ]] && tune_limits
+[[ "$task_all" = 1 || "$task_interrupt_coalescing" = 1 ]] && tune_interrupt_coalescing
 [[ "$task_all" = 1 || "$task_ht" = 1 ]] && tune_ht
 [[ "$task_all" = 1 || "$task_selinux" = 1 ]] && tune_selinux
 [[ "$task_all" = 1 || "$task_firewall" = 1 ]] && tune_firewall

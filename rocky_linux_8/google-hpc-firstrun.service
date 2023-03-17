@@ -1,0 +1,13 @@
+[Unit]
+Description=Google HPC First Boot Script
+After=network.target
+Before=getty.target google-guest-agent.service
+ConditionPathExists=/.google_hpc_firstrun
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/google_hpc_firstrun
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target

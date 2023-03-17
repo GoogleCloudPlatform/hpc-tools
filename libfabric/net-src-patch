@@ -1,0 +1,514 @@
+diff -ru libfabric-1.17.0/config/fi_provider.m4 net-libfabric/config/fi_provider.m4
+--- libfabric-1.17.0/config/fi_provider.m4	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/config/fi_provider.m4	2022-12-17 00:30:52.967688188 +0000
+@@ -84,7 +84,7 @@
+ 	$1_orig_LIBS=$LIBS
+ 
+ 	# Check the --enable-<$1> value
+-	$1_dl=0
++	$1_dl=1
+ 	AS_CASE([$enable_$1],
+ 	[yes|no], [],
+ 	[dl],     [enable_$1=yes $1_dl=1],
+diff -ru libfabric-1.17.0/configure.ac net-libfabric/configure.ac
+--- libfabric-1.17.0/configure.ac	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/configure.ac	2022-12-17 00:30:52.967688188 +0000
+@@ -8,7 +8,7 @@
+ dnl Process this file with autoconf to produce a configure script.
+ 
+ AC_PREREQ([2.60])
+-AC_INIT([libfabric], [1.17.0], [ofiwg@lists.openfabrics.org])
++AC_INIT([libfabric], [net1.17.0rc1], [ofiwg@lists.openfabrics.org])
+ AC_CONFIG_SRCDIR([src/fabric.c])
+ AC_CONFIG_AUX_DIR(config)
+ AC_CONFIG_MACRO_DIR(config)
+@@ -901,30 +901,28 @@
+ 
+ dnl Provider-specific checks
+ FI_PROVIDER_INIT
+-FI_PROVIDER_SETUP([psm])
+-FI_PROVIDER_SETUP([psm2])
+-FI_PROVIDER_SETUP([psm3])
+-FI_PROVIDER_SETUP([sockets])
+-FI_PROVIDER_SETUP([verbs])
+-FI_PROVIDER_SETUP([efa])
+-dnl The usnic provider must be setup after the verbs provider.  See
+-dnl prov/usnic/configure.m4 for details.
+-FI_PROVIDER_SETUP([usnic])
+-FI_PROVIDER_SETUP([gni])
+-FI_PROVIDER_SETUP([udp])
+-FI_PROVIDER_SETUP([tcp])
++AC_DEFINE_UNQUOTED([HAVE_PSM], 0, [psm disabled])
++AC_DEFINE_UNQUOTED([HAVE_PSM2], 0, [psm2 disabled])
++AC_DEFINE_UNQUOTED([HAVE_PSM3], 0, [psm3 disabled])
++AC_DEFINE_UNQUOTED([HAVE_SOCKETS], 0, [sockets disabled])
++AC_DEFINE_UNQUOTED([HAVE_VERBS], 0, [verbs disabled])
++AC_DEFINE_UNQUOTED([HAVE_EFA], 0, [efa disabled])
++AC_DEFINE_UNQUOTED([HAVE_USNIC], 0, [usnic disabled])
++AC_DEFINE_UNQUOTED([HAVE_GNI], 0, [gni disabled])
++AC_DEFINE_UNQUOTED([HAVE_UDP], 0, [udp disabled])
++AC_DEFINE_UNQUOTED([HAVE_TCP], 0, [tcp disabled])
+ FI_PROVIDER_SETUP([net])
+-FI_PROVIDER_SETUP([rxm])
+-FI_PROVIDER_SETUP([mrail])
+-FI_PROVIDER_SETUP([rxd])
+-FI_PROVIDER_SETUP([bgq])
+-FI_PROVIDER_SETUP([shm])
+-FI_PROVIDER_SETUP([rstream])
+-FI_PROVIDER_SETUP([perf])
+-FI_PROVIDER_SETUP([hook_debug])
+-FI_PROVIDER_SETUP([hook_hmem])
+-FI_PROVIDER_SETUP([dmabuf_peer_mem])
+-FI_PROVIDER_SETUP([opx])
++AC_DEFINE_UNQUOTED([HAVE_RXM], 0, [rxm disabled])
++AC_DEFINE_UNQUOTED([HAVE_MRAIL], 0, [mrail disabled])
++AC_DEFINE_UNQUOTED([HAVE_RXD], 0, [rxd disabled])
++AC_DEFINE_UNQUOTED([HAVE_BGQ], 0, [bgq disabled])
++AC_DEFINE_UNQUOTED([HAVE_SHM], 0, [shm disabled])
++AC_DEFINE_UNQUOTED([HAVE_RSTREAM], 0, [rstream disabled])
++AC_DEFINE_UNQUOTED([HAVE_PERF], 0, [perf disabled])
++AC_DEFINE_UNQUOTED([HAVE_HOOK_DEBUG], 0, [hook debug disabled])
++AC_DEFINE_UNQUOTED([HAVE_HOOK_HMEM], 0, [hook hmem disabled])
++AC_DEFINE_UNQUOTED([HAVE_DMABUF_PEER_MEM], 0, [dmabuf peer mem disabled])
++AC_DEFINE_UNQUOTED([HAVE_OPX], 0, [opx disabled])
+ FI_PROVIDER_FINI
+ dnl Configure the .pc file
+ FI_PROVIDER_SETUP_PC
+
+diff -ru libfabric-1.17.0/include/ofi.h net-libfabric/include/ofi.h
+--- libfabric-1.17.0/include/ofi.h	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/include/ofi.h	2022-12-17 00:30:52.967688188 +0000
+@@ -70,7 +70,7 @@
+ /* The lower minor digit is reserved for custom libfabric builds */
+ #define OFI_VERSION_DEF_PROV \
+ 	FI_VERSION(FI_MAJOR_VERSION * 100 + FI_MINOR_VERSION, \
+-		   FI_REVISION_VERSION * 10)
++		   FI_REVISION_VERSION * 10 + 1)
+ 
+ #define OFI_GETINFO_INTERNAL	(1ULL << 58)
+ #define OFI_CORE_PROV_ONLY	(1ULL << 59)
+diff -ru libfabric-1.17.0/include/rdma/fabric.h net-libfabric/include/rdma/fabric.h
+--- libfabric-1.17.0/include/rdma/fabric.h	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/include/rdma/fabric.h	2022-12-17 00:30:52.971688188 +0000
+@@ -166,6 +166,7 @@
+ #define FI_MATCH_COMPLETE	(1ULL << 31)
+ 
+ #define FI_PEER_TRANSFER	(1ULL << 36)
++#define FI_PEER_DOMAIN		(1ULL << 38)
+ #define FI_AV_USER_ID		(1ULL << 41)
+ #define FI_PEER			(1ULL << 43)
+ #define FI_XPU_TRIGGER		(1ULL << 44)
+diff -ru libfabric-1.17.0/Makefile.am net-libfabric/Makefile.am
+--- libfabric-1.17.0/Makefile.am	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/Makefile.am	2022-12-17 00:30:52.967688188 +0000
+@@ -13,16 +13,10 @@
+ 	-DRDMADIR=\"@rdmadir@\" \
+ 	-DPROVDLDIR=\"$(pkglibdir)\"
+ 
+-noinst_LTLIBRARIES =
++noinst_LTLIBRARIES = src/libfabric.la
+ lib_LTLIBRARIES =
+ noinst_PROGRAMS =
+ 
+-if EMBEDDED
+-noinst_LTLIBRARIES += src/libfabric.la
+-else
+-lib_LTLIBRARIES += src/libfabric.la
+-endif
+-
+ pkglib_LTLIBRARIES = $(DL_PROVIDERS)
+ 
+ 
+@@ -128,28 +122,6 @@
+ 	prov/hook/src/hook_wait.c		\
+ 	prov/hook/src/hook_xfer.c
+ 
+-# ensure dl-built providers link back to libfabric
+-linkback = src/libfabric.la
+-
+-bin_PROGRAMS = \
+-	util/fi_info \
+-	util/fi_strerror \
+-	util/fi_pingpong
+-
+-bin_SCRIPTS =
+-
+-util_fi_info_SOURCES = \
+-	util/info.c
+-util_fi_info_LDADD = $(linkback)
+-
+-util_fi_strerror_SOURCES = \
+-	util/strerror.c
+-util_fi_strerror_LDADD = $(linkback)
+-
+-util_fi_pingpong_SOURCES = \
+-	util/pingpong.c
+-util_fi_pingpong_LDADD = $(linkback)
+-
+ nodist_src_libfabric_la_SOURCES =
+ src_libfabric_la_SOURCES =			\
+ 	include/ofi_hmem.h			\
+@@ -193,216 +165,35 @@
+ 	src/var.c				\
+ 	src/abi_1_0.c				\
+ 	$(common_hook_srcs)			\
+-	$(common_srcs)
++	$(common_srcs)                          \
++	include/rdma/fabric.h			\
++	include/rdma/fi_atomic.h		\
++	include/rdma/fi_cm.h			\
++	include/rdma/fi_collective.h		\
++	include/rdma/fi_domain.h		\
++	include/rdma/fi_eq.h			\
++	include/rdma/fi_ext.h			\
++	include/rdma/fi_rma.h			\
++	include/rdma/fi_endpoint.h		\
++	include/rdma/fi_errno.h			\
++	include/rdma/fi_tagged.h		\
++	include/rdma/fi_trigger.h		\
++	include/rdma/providers/fi_prov.h	\
++	include/rdma/providers/fi_log.h
+ 
+ src_libfabric_la_CPPFLAGS = $(AM_CPPFLAGS)
+ src_libfabric_la_LDFLAGS =
+ src_libfabric_la_LIBADD =
+ src_libfabric_la_DEPENDENCIES = libfabric.map
+ 
+-if !EMBEDDED
+-src_libfabric_la_LDFLAGS += -version-info 21:0:20
+-endif
+ src_libfabric_la_LDFLAGS += -export-dynamic \
+ 			   $(libfabric_version_script)
+-rdmainclude_HEADERS += \
+-	$(top_srcdir)/include/rdma/fabric.h \
+-	$(top_srcdir)/include/rdma/fi_atomic.h \
+-	$(top_srcdir)/include/rdma/fi_cm.h \
+-	$(top_srcdir)/include/rdma/fi_collective.h \
+-	$(top_srcdir)/include/rdma/fi_domain.h \
+-	$(top_srcdir)/include/rdma/fi_eq.h \
+-	$(top_srcdir)/include/rdma/fi_ext.h \
+-	$(top_srcdir)/include/rdma/fi_rma.h \
+-	$(top_srcdir)/include/rdma/fi_endpoint.h \
+-	$(top_srcdir)/include/rdma/fi_errno.h \
+-	$(top_srcdir)/include/rdma/fi_tagged.h \
+-	$(top_srcdir)/include/rdma/fi_trigger.h
+-providersinclude_HEADERS += \
+-	$(top_srcdir)/include/rdma/providers/fi_prov.h \
+-	$(top_srcdir)/include/rdma/providers/fi_log.h
+-
+-if HAVE_DIRECT
+-nodist_rdmainclude_HEADERS = \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_domain.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_endpoint.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_tagged.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_rma.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_atomic_def.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_atomic.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_cm.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_eq.h \
+-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_trigger.h
+-if FI_DIRECT_H_IN
+-nodist_rdmainclude_HEADERS += $(top_builddir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct.h
+-else
+-nodist_rdmainclude_HEADERS += $(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct.h
+-endif
+-endif HAVE_DIRECT
+-
+-real_man_pages = \
+-        man/man1/fi_info.1 \
+-        man/man1/fi_pingpong.1 \
+-        man/man1/fi_strerror.1 \
+-        man/man3/fi_atomic.3 \
+-        man/man3/fi_av.3 \
+-        man/man3/fi_av_set.3 \
+-        man/man3/fi_cm.3 \
+-        man/man3/fi_cntr.3 \
+-        man/man3/fi_collective.3 \
+-        man/man3/fi_control.3 \
+-        man/man3/fi_cq.3 \
+-        man/man3/fi_domain.3 \
+-        man/man3/fi_endpoint.3 \
+-        man/man3/fi_errno.3 \
+-        man/man3/fi_eq.3 \
+-        man/man3/fi_fabric.3 \
+-        man/man3/fi_peer.3 \
+-        man/man3/fi_provider.3 \
+-        man/man3/fi_getinfo.3 \
+-        man/man3/fi_mr.3 \
+-        man/man3/fi_msg.3 \
+-	man/man3/fi_nic.3 \
+-        man/man3/fi_poll.3 \
+-        man/man3/fi_rma.3 \
+-        man/man3/fi_tagged.3 \
+-        man/man3/fi_trigger.3 \
+-        man/man3/fi_version.3 \
+-        man/man7/fabric.7 \
+-	man/man7/fi_hook.7 \
+-        man/man7/fi_provider.7 \
+-        man/man7/fi_direct.7
+-
+-dummy_man_pages = \
+-        man/man3/fi_accept.3 \
+-        man/man3/fi_alias.3 \
+-        man/man3/fi_allgather.3 \
+-        man/man3/fi_allreduce.3 \
+-        man/man3/fi_alltoall.3 \
+-        man/man3/fi_atomic_valid.3 \
+-        man/man3/fi_atomicmsg.3 \
+-        man/man3/fi_atomicv.3 \
+-        man/man3/fi_av_bind.3 \
+-        man/man3/fi_av_insert.3 \
+-        man/man3/fi_av_insertsvc.3 \
+-        man/man3/fi_av_lookup.3 \
+-        man/man3/fi_av_open.3 \
+-        man/man3/fi_av_remove.3 \
+-        man/man3/fi_av_set_diff.3 \
+-        man/man3/fi_av_set_insert.3 \
+-        man/man3/fi_av_set_intersect.3 \
+-        man/man3/fi_av_set_remove.3 \
+-        man/man3/fi_av_set_union.3 \
+-        man/man3/fi_av_straddr.3 \
+-        man/man3/fi_barrier.3 \
+-        man/man3/fi_broadcast.3 \
+-        man/man3/fi_cancel.3 \
+-        man/man3/fi_close.3 \
+-        man/man3/fi_cntr_add.3 \
+-        man/man3/fi_cntr_open.3 \
+-        man/man3/fi_cntr_read.3 \
+-        man/man3/fi_cntr_set.3 \
+-        man/man3/fi_cntr_wait.3 \
+-        man/man3/fi_compare_atomic.3 \
+-        man/man3/fi_compare_atomic_valid.3 \
+-        man/man3/fi_compare_atomicmsg.3 \
+-        man/man3/fi_compare_atomicv.3 \
+-        man/man3/fi_connect.3 \
+-        man/man3/fi_cq_open.3 \
+-        man/man3/fi_cq_read.3 \
+-        man/man3/fi_cq_readerr.3 \
+-        man/man3/fi_cq_readfrom.3 \
+-        man/man3/fi_cq_sread.3 \
+-        man/man3/fi_cq_sreadfrom.3 \
+-        man/man3/fi_cq_strerror.3 \
+-        man/man3/fi_cq_signal.3 \
+-        man/man3/fi_domain_bind.3 \
+-        man/man3/fi_domain_query.3 \
+-        man/man3/fi_dupinfo.3 \
+-        man/man3/fi_enable.3 \
+-        man/man3/fi_ep.3 \
+-        man/man3/fi_ep_bind.3 \
+-        man/man3/fi_eq_open.3 \
+-        man/man3/fi_eq_read.3 \
+-        man/man3/fi_eq_readerr.3 \
+-        man/man3/fi_eq_sread.3 \
+-        man/man3/fi_eq_strerror.3 \
+-        man/man3/fi_eq_write.3 \
+-        man/man3/fi_fetch_atomic.3 \
+-        man/man3/fi_fetch_atomic_valid.3 \
+-        man/man3/fi_fetch_atomicmsg.3 \
+-        man/man3/fi_fetch_atomicv.3 \
+-        man/man3/fi_freeinfo.3 \
+-        man/man3/fi_getname.3 \
+-        man/man3/fi_getopt.3 \
+-        man/man3/fi_getpeer.3 \
+-        man/man3/fi_inject.3 \
+-        man/man3/fi_injectdata.3 \
+-        man/man3/fi_inject_atomic.3 \
+-        man/man3/fi_inject_write.3 \
+-        man/man3/fi_inject_writedata.3 \
+-        man/man3/fi_join.3 \
+-        man/man3/fi_join_collective.3 \
+-        man/man3/fi_leave.3 \
+-        man/man3/fi_listen.3 \
+-        man/man3/fi_mr_bind.3 \
+-        man/man3/fi_mr_desc.3 \
+-        man/man3/fi_mr_key.3 \
+-        man/man3/fi_mr_reg.3 \
+-        man/man3/fi_mr_regattr.3 \
+-        man/man3/fi_mr_regv.3 \
+-        man/man3/fi_open.3 \
+-        man/man3/fi_open_ops.3 \
+-        man/man3/fi_passive_ep.3 \
+-        man/man3/fi_pep_bind.3 \
+-        man/man3/fi_poll_add.3 \
+-        man/man3/fi_poll_del.3 \
+-        man/man3/fi_poll_open.3 \
+-        man/man3/fi_query_atomic.3 \
+-        man/man3/fi_query_collective.3 \
+-        man/man3/fi_read.3 \
+-        man/man3/fi_readmsg.3 \
+-        man/man3/fi_readv.3 \
+-        man/man3/fi_recv.3 \
+-        man/man3/fi_recvmsg.3 \
+-        man/man3/fi_recvv.3 \
+-        man/man3/fi_reduce_scatter.3 \
+-        man/man3/fi_reject.3 \
+-        man/man3/fi_rx_addr.3 \
+-        man/man3/fi_rx_size_left.3 \
+-        man/man3/fi_scalable_ep_bind.3 \
+-        man/man3/fi_send.3 \
+-        man/man3/fi_senddata.3 \
+-        man/man3/fi_sendmsg.3 \
+-        man/man3/fi_sendv.3 \
+-        man/man3/fi_setname.3 \
+-        man/man3/fi_setopt.3 \
+-        man/man3/fi_shutdown.3 \
+-        man/man3/fi_strerror.3 \
+-        man/man3/fi_tinject.3 \
+-        man/man3/fi_tinjectdata.3 \
+-        man/man3/fi_tostr.3 \
+-        man/man3/fi_trecv.3 \
+-        man/man3/fi_trecvmsg.3 \
+-        man/man3/fi_trecvv.3 \
+-        man/man3/fi_trywait.3 \
+-        man/man3/fi_tsend.3 \
+-        man/man3/fi_tsenddata.3 \
+-        man/man3/fi_tsendmsg.3 \
+-        man/man3/fi_tsendv.3 \
+-        man/man3/fi_tx_size_left.3 \
+-        man/man3/fi_wait.3 \
+-        man/man3/fi_wait_open.3 \
+-        man/man3/fi_write.3 \
+-        man/man3/fi_writedata.3 \
+-        man/man3/fi_writemsg.3 \
+-        man/man3/fi_writev.3
+ 
+ pkgconfigdir = $(libdir)/pkgconfig
+ pkgconfig_DATA = libfabric.pc
+ 
+ nroff:
+-	@for file in $(real_man_pages) $(prov_install_man_pages); do \
++	@for file in $(prov_install_man_pages); do \
+ 	    source=`echo $$file | sed -e 's@/man[0-9]@@'`; \
+ 	    perl $(top_srcdir)/config/md2nroff.pl --source=$(top_srcdir)/$$source.md; \
+ 	done
+@@ -411,50 +202,24 @@
+ 	cp libfabric.spec $(distdir)
+ 	perl $(top_srcdir)/config/distscript.pl "$(distdir)" "$(PACKAGE_VERSION)"
+ 
+-TESTS = \
+-	util/fi_info
+-
+-test:
+-	./util/fi_info
+-
+ rpm: dist
+-	LDFLAGS=-Wl,--build-id rpmbuild -ta libfabric-$(PACKAGE_VERSION).tar.bz2
++	LDFLAGS=-Wl,--build-id rpmbuild -ta libnet-fi-$(PACKAGE_VERSION).tar.bz2
+ 
+ prov_install_man_pages=
+ prov_dist_man_pages=
+ prov_extra_dist=
+ EXTRA_DIST=
+ 
+-include prov/sockets/Makefile.include
+-include prov/udp/Makefile.include
+-include prov/verbs/Makefile.include
+-include prov/efa/Makefile.include
+-include prov/usnic/Makefile.include
+-include prov/psm/Makefile.include
+-include prov/psm2/Makefile.include
+-include prov/psm3/Makefile.include
+-include prov/gni/Makefile.include
+-include prov/rxm/Makefile.include
+-include prov/mrail/Makefile.include
+-include prov/rxd/Makefile.include
+-include prov/bgq/Makefile.include
+-include prov/opx/Makefile.include
+-include prov/shm/Makefile.include
+-include prov/tcp/Makefile.include
++
+ include prov/net/Makefile.include
+-include prov/rstream/Makefile.include
+ include prov/hook/Makefile.include
+-include prov/hook/perf/Makefile.include
+-include prov/hook/hook_debug/Makefile.include
+-include prov/hook/hook_hmem/Makefile.include
+-include prov/hook/dmabuf_peer_mem/Makefile.include
+ 
+-man_MANS = $(real_man_pages) $(prov_install_man_pages) $(dummy_man_pages)
++man_MANS = $(prov_install_man_pages)
+ 
+ EXTRA_DIST += \
+         autogen.sh \
+         NEWS.md \
+         libfabric.spec.in \
+         config/distscript.pl \
+-        $(real_man_pages) $(prov_dist_man_pages) $(dummy_man_pages) \
++        $(prov_dist_man_pages) \
+         $(prov_extra_dist)
+diff -ru libfabric-1.17.0/man/man7/fi_net.7 net-libfabric/man/man7/fi_net.7
+--- libfabric-1.17.0/man/man7/fi_net.7	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/man/man7/fi_net.7	2022-12-17 00:40:15.191678657 +0000
+@@ -1,10 +1,10 @@
+-.\" Automatically generated by Pandoc 2.9.2.1
++.\" Automatically generated by Pandoc 2.5
+ .\"
+-.TH "fi_net" "7" "2022\-12\-11" "Libfabric Programmer\[cq]s Manual" "#VERSION#"
++.TH "fi_net" "7" "2022\-10\-13" "Libfabric Programmer\[cq]s Manual" "Libfabric vnet1.17.0rc1"
+ .hy
+ .SH NAME
+ .PP
+-fi_net - The net Fabric Provider
++fi_net \- The net Fabric Provider
+ .SH OVERVIEW
+ .PP
+ The net provider is a developmental fork of the tcp provider focused on
+@@ -17,7 +17,7 @@
+ .PP
+ The following features are supported
+ .TP
+-\f[I]Endpoint types\f[R]
++.B \f[I]Endpoint types\f[R]
+ \f[I]FI_EP_MSG\f[R] is supported by the net provider.
+ The net provider shares the same msg endpoint protocol as the tcp
+ provider.
+@@ -29,20 +29,20 @@
+ As a result, the net provider\[cq]s rdm endpoint protocol is not
+ compatible with the ofi_rxm;tcp layered protocol.
+ .TP
+-\f[I]Endpoint capabilities\f[R]
++.B \f[I]Endpoint capabilities\f[R]
+ The net provider supports \f[I]FI_MSG\f[R], \f[I]FI_RMA\f[R], and
+ \f[I]FI_TAGGED\f[R].
+ .TP
+-\f[I]Shared Rx Context\f[R]
++.B \f[I]Shared Rx Context\f[R]
+ The net provider supports shared receive context
+ .TP
+-\f[I]Multi recv buffers\f[R]
++.B \f[I]Multi recv buffers\f[R]
+ The net provider supports multi recv buffers
+ .SH RUNTIME PARAMETERS
+ .PP
+ A full list of supported environment variables and their use can be
+ obtained using the fi_info application.
+-For example, \[lq]fi_info -g net\[rq] will show all environment
++For example, \[lq]fi_info \-g net\[rq] will show all environment
+ variables usable with the net provider.
+ .SH SEE ALSO
+ .PP
+diff -ru libfabric-1.17.0/prov/net/src/xnet_cm.c net-libfabric/prov/net/src/xnet_cm.c
+--- libfabric-1.17.0/prov/net/src/xnet_cm.c	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/prov/net/src/xnet_cm.c	2022-12-17 00:30:52.975688188 +0000
+@@ -265,8 +265,8 @@
+ 			 (char *) &status, &len);
+ 	if (ret < 0 || status) {
+ 		ret = (ret < 0)? -ofi_sockerr() : -status;
+-		FI_WARN_SPARSE(&xnet_prov, FI_LOG_EP_CTRL,
+-				"connection failure (sockerr %d)\n", ret);
++		FI_INFO(&xnet_prov, FI_LOG_EP_CTRL,
++			"connection failure (sockerr %d)\n", ret);
+ 		goto disable;
+ 	}
+ 
+diff -ru libfabric-1.17.0/src/common.c net-libfabric/src/common.c
+--- libfabric-1.17.0/src/common.c	2022-12-16 21:27:11.000000000 +0000
++++ net-libfabric/src/common.c	2022-12-17 00:30:52.995688187 +0000
+@@ -2076,7 +2076,6 @@
+ 	for (ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next) {
+ 		if (ifa->ifa_addr == NULL ||
+ 			!(ifa->ifa_flags & IFF_UP) ||
+-			!(ifa->ifa_flags & IFF_RUNNING) ||
+ 			(ifa->ifa_flags & IFF_LOOPBACK) ||
+ 			((ifa->ifa_addr->sa_family != AF_INET) &&
+ 			(ifa->ifa_addr->sa_family != AF_INET6)))

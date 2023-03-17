@@ -15,9 +15,9 @@
 # Don't build debuginfo packages.
 %define debug_package %{nil}
 
-# For EL7, if building on CentOS, override dist to be el7.
-%if 0%{?rhel} == 7
-  %define dist .el7
+# For EL8, if building on rocky linux, override dist to be el8.
+%if 0%{?rhel} == 8
+  %define dist .el8
 %endif
 
 Name: google-hpc-compute
@@ -48,17 +48,19 @@ for tuning MPI applications running on Google Compute Engine cloud environment.
 install -d %{buildroot}%{_bindir}
 install -d %{buildroot}%{_unitdir}
 install -p -m 0755 mpi-tuning.sh %{buildroot}%{_bindir}/google_mpi_tuning
-install -p -m 0755 google_install_mpitune %{buildroot}%{_bindir}/google_install_mpitune
 install -p -m 0755 google_hpc_multiqueue %{buildroot}%{_bindir}/google_hpc_multiqueue
 install -p -m 0644 google-hpc-multiqueue.service %{buildroot}%{_unitdir}/google-hpc-multiqueue.service
 install -p -m 0755 google_hpc_firstrun %{buildroot}%{_bindir}/google_hpc_firstrun
 install -p -m 0644 google-hpc-firstrun.service %{buildroot}%{_unitdir}/google-hpc-firstrun.service
-install -p -m 0755 google_install_mpi %{buildroot}%{_bindir}/google_install_mpi
+install -p -m 0755 google_install_intelmpi %{buildroot}%{_bindir}/google_install_intelmpi
+install -p -m 0755 google_hpc_libfabric %{buildroot}%{_bindir}/google_hpc_libfabric
 install -d %{buildroot}%{_datadir}/google-hpc-compute
-cp -ar mpitune-configs %{buildroot}%{_datadir}/google-hpc-compute
+cp -ar libfabric %{buildroot}%{_datadir}/google-hpc-compute/
 cp -ar vmroot %{buildroot}%{_datadir}/google-hpc-compute/mpi-tuning
 install -d %{buildroot}%{_sysconfdir}/security/limits.d
 install -p -m 0644 vmroot/etc/security/limits.d/98-google-hpc-image.conf %{buildroot}%{_sysconfdir}/security/limits.d/98-google-hpc-image.conf
+install -d %{buildroot}%{_sysconfdir}/NetworkManager/dispatcher.d
+install -p -m 0755 vmroot/etc/NetworkManager/dispatcher.d/30-disable-gvnic-coalesce %{buildroot}%{_sysconfdir}/NetworkManager/dispatcher.d/30-disable-gvnic-coalesce
 install -d %{buildroot}/lib/tuned/google-hpc-compute
 install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute/tuned.conf %{buildroot}/lib/tuned/google-hpc-compute/tuned.conf
 install -d %{buildroot}/lib/tuned/google-hpc-compute-throughput
@@ -67,14 +69,15 @@ install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf
 %files
 %defattr(-,root,root,-)
 %{_bindir}/google_mpi_tuning
-%{_bindir}/google_install_mpitune
 %{_bindir}/google_hpc_multiqueue
 %{_unitdir}/google-hpc-multiqueue.service
 %{_bindir}/google_hpc_firstrun
 %{_unitdir}/google-hpc-firstrun.service
-%{_bindir}/google_install_mpi
+%{_bindir}/google_install_intelmpi
+%{_bindir}/google_hpc_libfabric
 %{_datadir}/google-hpc-compute/*
 %{_sysconfdir}/security/limits.d/98-google-hpc-image.conf
+%{_sysconfdir}/NetworkManager/dispatcher.d/30-disable-gvnic-coalesce
 /lib/tuned/google-hpc-compute/tuned.conf
 /lib/tuned/google-hpc-compute-throughput/tuned.conf
 
@@ -82,14 +85,14 @@ install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf
 if [ $1 -gt 1 ] ; then
   # fallback to virtual-guest if necessary
   current_profile=$(tuned-adm active | cut -d' ' -f4)
-  if [[ $current_profile == "google-hpc-compute" ]]; then
+  if [[ $current_profile == "google-hpc-compute-throughput" ]]; then
     tuned-adm profile virtual-guest
   fi
 fi
 
 %post
 # Enable tuned profile
-tuned-adm profile google-hpc-compute
+tuned-adm profile google-hpc-compute-throughput
 # Enable multiqueue script
 systemctl enable google-hpc-multiqueue.service >/dev/null 2>&1 || :
 # Enable hpc image firstrun script
@@ -115,7 +118,7 @@ if [ $1 -eq 0 ]; then
 
   # Fallback to virtual-guest if necessary
   current_profile=$(tuned-adm active | cut -d' ' -f4)
-  if [[ $current_profile == "google-hpc-compute" ]]; then
+  if [[ $current_profile == "google-hpc-compute-throughput" ]]; then
     tuned-adm profile virtual-guest
   fi
 fi

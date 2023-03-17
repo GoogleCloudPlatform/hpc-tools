@@ -24,8 +24,6 @@ The following tags can be used
 1. nofirewalld - Disable firewalld
 1. noselinux - Disable SE Linux
 1. nomitigation - Disable CPU vulnerabilities mitigations
-1. hpcprofile - (Bash only) Apply the tuned profile including the following:
-                tcpmem, networklatency (busypoll), nosmt, noselinux
 
 ## Bash Scripts
 
@@ -43,6 +41,8 @@ The following options are available
 
   Options:
     --hpcprofile       Install and apply google-hpc-compute tuned profile
+                       Also applies: --tcpmem, --limits
+    --hpcthroughput    Install and apply google-hpc-compute-throughput profile
                        Also applies: --tcpmem, --limits
     --tcpmem           Increase memory for TCP
     --limits           Change the system ulimits

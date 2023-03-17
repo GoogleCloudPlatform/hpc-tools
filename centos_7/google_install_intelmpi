@@ -1,0 +1,180 @@
+#!/bin/bash
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MPI installation script
+# This script handles the installation of Intel MPI 2021, Intel HPC platform
+# specification related contents (Intel MKL, ICC, DAAL, IPP, etc.) for
+# MPI application. This script is intended to be used on Google Cloud HPC Image.
+# and is validated on GCP CentOS 7 image.
+
+readonly RPM_DOWNLOAD="/tmp/rpm_download/"
+readonly DEFAULT_INSTALL_DIR="/opt/intel"
+readonly MOTD="/etc/motd"
+
+# Set some default values:
+intel_mpi=0
+dryrun=0
+show_usage=1
+
+# Default target directory is /opt/intel/, set to "" for setopts
+install_dir=${DEFAULT_INSTALL_DIR}
+
+# Package list
+PREREQ_RPM_LIST=(
+"wget"
+)
+
+INTEL_MPI_INSTALLER=(
+"https://registrationcenter-download.intel.com/akdlm/irc_nas/19131/l_mpi_oneapi_p_2021.8.0.25329.sh"
+)
+
+INTEL_MPI_PKGS=(
+"intel-oneapi-mpi-2021.8.0.x86_64"
+)
+
+usage()
+{
+  cat <<EOF
+  Usage:
+    Verify installation steps: $(basename "$0") [options] --dryrun
+    Apply installation: $(basename "$0") [options]
+
+  Options:
+    -h | --help          Display help message
+    --dryrun             Do not execute commands
+    --install_dir <path> Configure the prefix directory for installations 
+                         Default location is set to /opt/intel
+    --impi_2021          Install Intel(R) MPI 2021.8 (Recommended version
+                         for running MPI jobs on Google Cloud)
+EOF
+}
+
+run() {
+  if [[ "$dryrun" = 1 ]]; then
+    echo "$*"
+  else
+    eval "$*"
+  fi
+}
+
+add_motd()
+{
+  if [[ "${dryrun}" = 0 ]]; then
+    grep -qF -- "$1" "${MOTD}" || echo "$1" >> "${MOTD}"
+    echo "$1"
+  fi
+}
+
+check_root()
+{
+  if [[ "$EUID" -ne 0 ]] && [[ "$dryrun" = 0 ]]; then
+    echo "Please run this script as root"
+    exit 1
+  fi
+}
+
+install_prereqs()
+{
+  for package in ${PREREQ_RPM_LIST[@]}; do
+    # install the package
+    run yum install -y "${package}" > ${RPM_DOWNLOAD}tmp
+  done
+}
+
+# Install Intel MPI 2021
+intel_mpi()
+{
+  wget -O ${RPM_DOWNLOAD}/impi_installer.sh ${INTEL_MPI_INSTALLER}
+  chmod 755 ${RPM_DOWNLOAD}/impi_installer.sh
+
+  ${RPM_DOWNLOAD}/impi_installer.sh  -a -s --eula accept \
+  --install-dir ${install_dir}
+}
+
+setopts()
+{
+  VALID_ARGUMENTS=$?
+  if [ "$VALID_ARGUMENTS" != "0" ]; then
+    echo "Invalid option inputs."
+    usage
+    exit 1
+  fi
+
+  eval set -- "$PARSED_ARGUMENTS"
+  while true;
+  do
+    if [[ "$1" = "-h" ]] || [[ "$1" = "--help" ]]; then
+      usage
+      exit 0
+    elif [[ "$1" = "--install_dir" ]]; then
+      shift
+      install_dir=$1
+      shift
+    elif [[ "$1" = "--impi_2021" ]]; then
+      intel_mpi=1
+      show_usage=0
+      shift
+    elif [[ "$1" = "--dryrun" ]]; then
+      dryrun=1
+      shift
+    elif [[ "$1" = "--" ]]; then
+      shift
+      break
+    else
+      echo "Unexpected option: $1"
+      usage
+      exit 1
+    fi
+  done
+
+}
+
+cleanup()
+{
+  echo "Installation complete"
+
+  # Source the Intel MPI 2021 library
+  if [[ "$intel_mpi" = 1  ]]; then
+    # Install Intel MPI configurations
+    add_motd "Enable Intel(R) MPI 2021 Libraries with:"
+    add_motd "source ${install_dir}/mpi/latest/env/vars.sh "
+  fi
+
+  run rm -rf ${RPM_DOWNLOAD}
+}
+
+PARSED_ARGUMENTS=$(getopt -q -n new_cmd -o h \
+    --long help,dryrun,impi_2021,install_dir: -- "$@")
+setopts
+
+if [[ "$show_usage" = 1 ]]; then
+ usage
+ exit 0
+fi
+
+check_root
+mkdir -p ${RPM_DOWNLOAD}
+if [[ ! -d ${install_dir} ]]; then
+  echo "Create the install_dir directory."
+  run mkdir -p ${install_dir}
+fi
+
+# Condition checking
+echo "Check and install the prerequisite packages to run this script"
+install_prereqs
+
+# Execution
+[[ "$intel_mpi" = 1 ]] && intel_mpi
+cleanup
