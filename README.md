@@ -27,13 +27,14 @@ The following tags can be used
 
 ## Bash Scripts
 
-Use `mpi-tuning.sh` to apply tunings on indvidual VMs.
+Use `mpi-tuning.sh` to apply tunings on individual VMs.
 
 ```shell
 sudo mpi-tuning.sh [options]
 ```
 
 The following options are available
+
 ```shell
   Usage:
     Verify tuning steps: mpi-tuning.sh [options] --dryrun
@@ -57,13 +58,14 @@ The following options are available
 ```
 
 
-Use `google_install_mpi` to install IntelMPI environment on indvidual VMs.
+Use `google_install_mpi` to install IntelMPI 2018 environment on individual VMs. Note that this script only supports CentOS-7.
 
 ```shell
 sudo google_install_mpi [options]
 ```
 
 The following options are available
+
 ```shell
   Usage:
     Verify installation steps: google_install_mpi  [options] --dryrun
@@ -72,14 +74,14 @@ The following options are available
   Options:
     -h | --help          Display help message
     --dryrun             Do not execute commands
-    --prefix             Configure the prefix directory for installations 
+    --prefix             Configure the prefix directory for installations
                          Default location is set to /opt/intel
     --intel_checker      Install Intel(R) Cluster Checker
-    --intel_compliance   Configure environment in compliance with Intel(R) HPC 
-                         platform specification. Include Intel(R) HPC Platform 
-                         Specification meta-packages, Intel(R) Performance 
+    --intel_compliance   Configure environment in compliance with Intel(R) HPC
+                         platform specification. Include Intel(R) HPC Platform
+                         Specification meta-packages, Intel(R) Performance
                          Libraries and Intel(R) Distribution for Python
-    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018 
+    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018
     --intel_comp_meta    Install Intel(R) HPC Platform Specification
                          meta-packages
     --intel_mpi          Install Intel(R) MPI 2018 (Recommended version
@@ -87,17 +89,69 @@ The following options are available
     --intel_python       Install latest Intel(R) Distribution for Python
 ```
 
+Use `google_install_intelmpi` to install IntelMPI 2021 environment on individual VMs.
+
+```shell
+sudo google_install_intelmpi [options]
+```
+
+The following options are available
+
+```shell
+  Usage:
+    Verify installation steps: google_install_intelmpi [options] --dryrun
+    Apply installation: google_install_intelmpi [options]
+
+  Options:
+    -h | --help          Display help message
+    --dryrun             Do not execute commands
+    --install_dir <path> Configure the prefix directory for installations
+                         Default location is set to /opt/intel
+    --impi_2021          Install Intel(R) MPI 2021.8 (Recommended version
+                         for running MPI jobs on Google Cloud)
+```
+
+Use `google_hpc_libfabric` to builds and installs two libfabric providers functioning over the TCP transport: the NET provider and the PSM3 provider.
+
+```shell
+sudo google_hpc_libfabric [options]
+```
+
+The following options are available:
+
+```shell
+  Usage:
+    Verify installation steps: google_hpc_libfabric [options] --dryrun
+    Apply installation: google_hpc_libfabric [options]
+  Options:
+    -h | --help          Display help message
+    --dryrun             Do not execute commands
+    --net                Build the Libfabric NET Provider
+    --psm3               Build the Libfabric PSM3 Provider
+    --install_dir        Configure the prefix directory for installations
+                         Default location is set to /opt/Libfabric
+    --cleanup            Remove the downloaded source code in /tmp/src_download/
+```
+Note the exact location of the installed path follows the rules below:
+
+- If the `install_dir` contains IntelMPI 2021.8, it will install the provider binary to the IMPI `<install_dir>/mpi/latest/libfabric/lib/prov`.The IntelMPI will automatically pick up the provider. The user only needs to specify `FI_PROVIDER=<net|psm3>` to use the corresponding providers.
+
+- If the `install_dir` doesn't not contain IntelMPI2021.8, it will install to the install_dir directly. The user needs to provide `FI_PROVIDER_PATH=<install_dir>` to invoke the provider, in addition to `FI_PROVIDER=<net|psm3>`.
+
+
 
 ## MPI Collectives tuning configurations
 
-Directory mpitune-configs/intelmpi-2018 contains output configurations from Intel MPI collective tunings performed on c2-standard-60 with placement groups.
+Directory mpitune-configs/intelmpi-2018 contains output configurations from Intel MPI 2018 collective tunings performed on c2-standard-60 with placement groups.
 
 To use these tuning files, install the Intel MPI library 2018, source the `mpivars.[c]sh` script to set up the proper environment, then run the installation script:
+
 ```shell
 ./google_install_mpitune
 ```
 
 Tuning configuration needs to be available for the combination of the number of VMs and the number of processes per VM. If it is not available, you can use mpitune utility. For example, to tune for 22 VMs and 30 processes per VM, run the following:
+
 ```shell
 mpitune -hf hostfile -fl ‘shm:tcp’ -pr 30:30 -hr 22:22
 ```
@@ -105,6 +159,7 @@ mpitune -hf hostfile -fl ‘shm:tcp’ -pr 30:30 -hr 22:22
 This will generate a configuration file in the Intel MPI directory which can be used later to run applications. The user must have write access to this directory or this command must be run as root.
 
 To make use of the tuning configuration for an application add -tune option to mpirun command line.
+
 ```shell
 mpirun -tune -hostfile hostfile -genv I_MPI_FABRICS ‘shm:tcp’ -np 660 -ppn 30 ./app
 ```
@@ -113,17 +168,20 @@ mpirun -tune -hostfile hostfile -genv I_MPI_FABRICS ‘shm:tcp’ -np 660 -ppn 3
 
 `google-hpc-compute` is a package that applies the bash tuning script and installs the MPI collectives tuning configurations. This package is pre-installed on the HPC VM image.
 
-Currently only CentOS 7 RPM package is supported.
+Currently only CentOS 7 and Rocky Linux 8 RPM packages are supported.
 
 To build this package, install `rpm-build` and run the `build_rpm.sh` script.
+
 ```shell
-./packaging/build_rpm.sh
+./[centos_7|rocky_linux_8]/packaging/build_rpm.sh
 ```
 
 The package will be built in `/tmp/rpmpackage`, to install, use `yum` or `rpm` command:
+
 ```shell
 sudo yum install /tmp/rpmpackage/RPMS/x86_64/google-hpc-compute-20200818.00-g1.el7.x86_64.rpm
 ```
+
 This will apply all tunings (except for `--nomitigation`) and install the content of this project to the following locations:
 
 - Tuning script: `/usr/bin/google_mpi_tuning`
@@ -131,6 +189,7 @@ This will apply all tunings (except for `--nomitigation`) and install the conten
 - Collective tuning configurations: `/usr/share/google-hpc-compute`
 
 Using the tuning script (renamed as `google_mpi_tuning`) to apply the `--nomitigation` tuning (and reboot) manually:
+
 ```shell
 sudo google_mpi_tuning --nomitigation --reboot
 ```
