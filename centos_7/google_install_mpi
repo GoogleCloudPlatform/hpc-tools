@@ -19,6 +19,8 @@
 # MPI application. This script is intended to be used on Google Cloud HPC Image.
 # and is validated on GCP CentOS 7 image only.
 
+set -e -o pipefail
+
 readonly RPM_DOWNLOAD="/tmp/rpm_download/"
 readonly DEFAULT_INSTALL_DIR="/opt/intel"
 readonly MOTD="/etc/motd"
@@ -118,14 +120,14 @@ usage()
   Options:
     -h | --help          Display help message
     --dryrun             Do not execute commands
-    --prefix             Configure the prefix directory for installations 
+    --prefix             Configure the prefix directory for installations
                          Default location is set to /opt/intel
     --intel_checker      Install Intel(R) Cluster Checker
-    --intel_compliance   Configure environment in compliance with Intel(R) HPC 
-                         platform specification. Include Intel(R) HPC Platform 
-                         Specification meta-packages, Intel(R) Performance 
+    --intel_compliance   Configure environment in compliance with Intel(R) HPC
+                         platform specification. Include Intel(R) HPC Platform
+                         Specification meta-packages, Intel(R) Performance
                          Libraries and Intel(R) Distribution for Python
-    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018 
+    --intel_psxe_runtime Install Intel(R) Parallel Studio XE Runtime 2018
     --intel_comp_meta    Install Intel(R) HPC Platform Specification
                          meta-packages
     --intel_mpi          Install Intel(R) MPI 2018 (Recommended version

@@ -20,6 +20,8 @@
 # - MPI tuning set up: use google_mpi_tuning to apply system tunings for getting
 #  better performance for MPI application.
 
+set -x -e -o pipefail
+
 URL="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
 MAXTIME=1
 FIRSTRUN="/.google_hpc_firstrun"
@@ -28,6 +30,17 @@ function get_attributes()
 {
   INSTALL_MPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_mpi)"
   MPI_TUNE="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_mpi_tuning)"
+  INSTALL_INTELMPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_intelmpi)"
+}
+
+function install_intelmpi()
+{
+  if [[ ${INSTALL_INTELMPI} ]]; then
+     echo "Install MPI environment: google_install_intelmpi ${INSTALL_INTELMPI}"
+     google_install_intelmpi ${INSTALL_INTELMPI}
+  else
+     echo "No MPI environment configured through metadata."
+  fi
 }
 
 function install_mpi()
@@ -53,5 +66,6 @@ function mpi_tuning()
 rm -f ${FIRSTRUN}
 echo "Google HPC startup firstrun operation."
 get_attributes
+install_intelmpi
 install_mpi
 mpi_tuning

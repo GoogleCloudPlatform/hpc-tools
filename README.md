@@ -107,36 +107,9 @@ The following options are available
     --dryrun             Do not execute commands
     --install_dir <path> Configure the prefix directory for installations
                          Default location is set to /opt/intel
-    --impi_2021          Install Intel(R) MPI 2021.8 (Recommended version
+    --impi_2021          Install Intel(R) MPI 2021.11 (Recommended version
                          for running MPI jobs on Google Cloud)
 ```
-
-Use `google_hpc_libfabric` to builds and installs two libfabric providers functioning over the TCP transport: the NET provider and the PSM3 provider.
-
-```shell
-sudo google_hpc_libfabric [options]
-```
-
-The following options are available:
-
-```shell
-  Usage:
-    Verify installation steps: google_hpc_libfabric [options] --dryrun
-    Apply installation: google_hpc_libfabric [options]
-  Options:
-    -h | --help          Display help message
-    --dryrun             Do not execute commands
-    --net                Build the Libfabric NET Provider
-    --psm3               Build the Libfabric PSM3 Provider
-    --install_dir        Configure the prefix directory for installations
-                         Default location is set to /opt/Libfabric
-    --cleanup            Remove the downloaded source code in /tmp/src_download/
-```
-Note the exact location of the installed path follows the rules below:
-
-- If the `install_dir` contains IntelMPI 2021.8, it will install the provider binary to the IMPI `<install_dir>/mpi/latest/libfabric/lib/prov`.The IntelMPI will automatically pick up the provider. The user only needs to specify `FI_PROVIDER=<net|psm3>` to use the corresponding providers.
-
-- If the `install_dir` doesn't not contain IntelMPI2021.8, it will install to the install_dir directly. The user needs to provide `FI_PROVIDER_PATH=<install_dir>` to invoke the provider, in addition to `FI_PROVIDER=<net|psm3>`.
 
 
 

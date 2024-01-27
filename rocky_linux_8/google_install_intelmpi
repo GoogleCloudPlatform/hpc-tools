@@ -19,6 +19,8 @@
 # MPI application. This script is intended to be used on Google Cloud HPC Image.
 # and is validated on GCP Rocky Linux 8 image.
 
+set -e -o pipefail
+
 readonly RPM_DOWNLOAD="/tmp/rpm_download/"
 readonly DEFAULT_INSTALL_DIR="/opt/intel"
 readonly MOTD="/etc/motd"
@@ -37,11 +39,11 @@ PREREQ_RPM_LIST=(
 )
 
 INTEL_MPI_INSTALLER=(
-"https://registrationcenter-download.intel.com/akdlm/irc_nas/19131/l_mpi_oneapi_p_2021.8.0.25329.sh"
+"https://registrationcenter-download.intel.com/akdlm/IRC_NAS/2c45ede0-623c-4c8e-9e09-bed27d70fa33/l_mpi_oneapi_p_2021.11.0.49513_offline.sh"
 )
 
 INTEL_MPI_PKGS=(
-"intel-oneapi-mpi-2021.8.0.x86_64"
+"intel-oneapi-mpi-2021.11.1.x86_64"
 )
 
 usage()
@@ -54,9 +56,9 @@ usage()
   Options:
     -h | --help          Display help message
     --dryrun             Do not execute commands
-    --install_dir <path> Configure the prefix directory for installations 
+    --install_dir <path> Configure the prefix directory for installations
                          Default location is set to /opt/intel
-    --impi_2021          Install Intel(R) MPI 2021.8 (Recommended version
+    --impi_2021          Install Intel(R) MPI 2021.11 (Recommended version
                          for running MPI jobs on Google Cloud)
 EOF
 }

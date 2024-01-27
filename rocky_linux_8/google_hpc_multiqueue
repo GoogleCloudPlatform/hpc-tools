@@ -20,58 +20,72 @@
 # - Apply tunings validated on a set of HPC workloads
 # - For AMD EPYC processors, spread IRQ mappings across LLC slices
 
+set -x -e -o pipefail
+
 VIRTIO_NET_DIR=/sys/bus/virtio/drivers/virtio_net
 VIRTIO_NET_DEVS=${VIRTIO_NET_DIR}/virtio*
 GVNIC_DIR=/sys/bus/pci/drivers/gvnic
-GVNIC_DEVS=${GVNIC_DIR}/0*
+if [ ! -d "$GVNIC_DIR" ]; then
+  GVNIC_DIR=/sys/bus/pci/drivers/gve
+fi
 IRQ_DIR=/proc/irq/*
 MULTIQUEUE_FALLBACK=/usr/bin/google_set_multiqueue
 
 function set_multiqueue_fallback() {
   echo "Fallback to ${MULTIQUEUE_FALLBACK}..."
-  [[ -f ${MULTIQUEUE_FALLBACK} ]] && ${MULTIQUEUE_FALLBACK} \
-    || echo "${MULTIQUEUE_FALLBACK} not found."
+  if ! { [[ -f ${MULTIQUEUE_FALLBACK} ]] && ${MULTIQUEUE_FALLBACK}; }; then
+    echo "${MULTIQUEUE_FALLBACK} not found."
+  fi
   exit 0
 }
 
 function get_phy_cpus() {
   # get cpu socket count
-  nr_socket=$(grep -i "physical id" /proc/cpuinfo | sort -u | wc -l)
+  nr_socket=$(grep -i "physical id" /proc/cpuinfo | sort -u | wc -l | tr -d '[:space:]')
 
   # get physical core count
-  nr_phy_cpus=$(lscpu -p | grep -v '^#' | sort -t, -k 2,4 -u | wc -l)
+  nr_phy_cpus=$(lscpu -p | grep -v '^#' | sort -t, -k 2,4 -u | wc -l | tr -d '[:space:]')
 
   nr_per_socket=$((nr_phy_cpus/nr_socket))
 
   # check AMD EPYC CPUs
-  epyc_check=$(cat /proc/cpuinfo | grep EPYC)
-  [[ -z ${epyc_check} ]] && is_epyc=false || is_epyc=true
+  epyc_check=$(cat /proc/cpuinfo | grep EPYC || true)
+  if [[ -z ${epyc_check} ]]; then is_epyc=false; else is_epyc=true; fi
 
-  [[ -z ${nr_socket} ]] && set_multiqueue_fallback
-  [[ -z ${nr_phy_cpus} ]] && set_multiqueue_fallback
-  [[ -z ${nr_per_socket} ]] && set_multiqueue_fallback
+  if [[ -z ${nr_socket} ]]; then set_multiqueue_fallback; fi
+  if [[ -z ${nr_phy_cpus} ]]; then set_multiqueue_fallback; fi
+  if [[ -z ${nr_per_socket} ]]; then set_multiqueue_fallback; fi
 
   # fallback to standard multiqueue script for smaller VM shapes
-  [[ ${nr_phy_cpus} -lt 15 ]] && set_multiqueue_fallback
+  if [[ ${nr_phy_cpus} -lt 15 ]]; then set_multiqueue_fallback; fi
 }
 
 function set_virtionet_channels() {
-  max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 Combined | cut -f2)
+  max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 Combined | cut -f2 | tr -d '[:space:]')
   num_channels=${max_channels}
-  [[ "${max_channels}" -eq "1" ]] && return
+  if [[ "${max_channels}" -eq "1" ]]; then return; fi
 
   # max_channels is not an integer
-  [[ ! "${max_channels}" -eq "${max_channels}" ]] && return
+  if [[ ! "${max_channels}" -eq "${max_channels}" ]]; then return; fi
 
   # use nr_phy_cpus as queue count
-  [[ ${nr_phy_cpus} -lt ${max_channels} ]] && num_channels=${nr_phy_cpus}
+  if [[ ${nr_phy_cpus} -lt ${max_channels} ]]; then num_channels=${nr_phy_cpus}; fi
 
   # use cpu cores on NUMA node 0 if possible
   numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
-  [[ ${nr_per_socket} -gt ${numa0_threshold} ]] && num_channels=${nr_per_socket}
+  if [[ ${nr_per_socket} -gt ${numa0_threshold} ]]; then num_channels=${nr_per_socket}; fi
 
   echo "Set channels for $eth_dev to $num_channels."
-  ethtool -L "${eth_dev}" combined "${num_channels}" > /dev/null 2>&1
+
+  rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
+  if [[ "$rx_channels" -ne "$num_channels" ]]; then
+    ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
+  fi
+
+  tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
+  if [[ "$tx_channels" -ne "$num_channels" ]]; then
+    ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
+  fi
 }
 
 function set_virtionet_irq() {
@@ -79,7 +93,7 @@ function set_virtionet_irq() {
   for irq in ${IRQ_DIR}
   do
     smp_affinity="${irq}/smp_affinity_list"
-    [[ ! -f "${smp_affinity}" ]] && continue
+    if [[ ! -f "${smp_affinity}" ]]; then continue; fi
     # Classify this IRQ as virtionet intx, virtionet MSI-X, or non-virtionet
     # If the IRQ type is virtionet intx, a subdirectory with the same name as
     # the device will be present. If the IRQ type is virtionet MSI-X, then
@@ -104,7 +118,7 @@ function set_virtionet_irq() {
       fi
     done
     affinity_hint="${irq}/affinity_hint"
-    [[ "$virtionet_msix_found" -eq 0 || ! -f "${affinity_hint}" ]] && continue
+    if [[ "$virtionet_msix_found" -eq 0 || ! -f "${affinity_hint}" ]]; then continue; fi
 
     # HPC workloads can have high throughput on a smaller number of flows.
     # Assign more than one CPU (when available) for each IRQ to mitigate the
@@ -124,23 +138,32 @@ function set_virtionet_irq() {
 }
 
 function set_gvnic_channels() {
-  max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 RX | cut -d':' -f2)
+  max_channels=$(ethtool -l "${eth_dev}" | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
   num_channels=${max_channels}
-  [[ -z ${max_channels} ]] && return
-  [[ "${max_channels}" -eq "1" ]] && return
+  if [[ -z ${max_channels} ]]; then return; fi
+  if [[ "${max_channels}" -eq "1" ]]; then return; fi
 
   # max_channels is not an integer
-  [[ ! "${max_channels}" -eq "${max_channels}" ]] && return
+  if [[ ! "${max_channels}" -eq "${max_channels}" ]]; then return; fi
 
   # use nr_per_socket as queue count
-  [[ ${nr_per_socket} -lt ${max_channels} ]] && max_channels=${nr_per_socket}
+  if [[ ${nr_per_socket} -lt ${max_channels} ]]; then max_channels=${nr_per_socket}; fi
 
   # use half of cpu cores on NUMA node 0 if possible
   numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
-  [[ $((nr_per_socket/2)) -gt ${numa0_threshold} ]] && num_channels=$((nr_per_socket/2))
+  if [[ $((nr_per_socket/2)) -gt ${numa0_threshold} ]]; then num_channels=$((nr_per_socket/2)); fi
 
   echo "Set channels for $eth_dev to $num_channels."
-  ethtool -L "${eth_dev}" rx "${num_channels}" tx "${num_channels}" > /dev/null 2>&1
+
+  rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
+  if [[ "$rx_channels" -ne "$num_channels" ]]; then
+    ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
+  fi
+
+  tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
+  if [[ "$tx_channels" -ne "$num_channels" ]]; then
+    ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
+  fi
 }
 
 function set_gvnic_irq() {
@@ -150,8 +173,10 @@ function set_gvnic_irq() {
   # gve and will not affect virtio queues.
   epyc_per_irq=$((nr_per_socket/num_channels))
   txrx=0
+  found="false"
   for i in ${IRQ_DIR}; do
-    if ls "${i}"/*-ntfy-block.* 1> /dev/null 2>&1; then
+    found="true"
+    if ls "${i}"/*-ntfy-bl* 1> /dev/null 2>&1; then
       if [[ -f ${i}/affinity_hint ]]; then
           cp "${i}/affinity_hint" "${i}/smp_affinity"
       fi
@@ -179,6 +204,11 @@ function set_gvnic_irq() {
       echo "${i}: real affinity ${real_affinity}"
     fi
   done
+
+  if [[ "$found" != "true" ]]; then
+    echo "Failed to find any gvNIC queues"
+    exit 1
+  fi
 }
 
 function set_xps {
@@ -239,9 +269,12 @@ function set_net_devs {
   fi
 
   if [[ -d "$GVNIC_DIR" ]]; then
+    GVNIC_DEVS=$(compgen -G "${GVNIC_DIR}/*")
+
     # Loop through all the GVNIC devices
     for dev in $GVNIC_DEVS; do
       ETH_DEVS="${dev}/net/*"
+      found_channels="false"
       for eth_dev in $ETH_DEVS; do
         eth_dev=$(basename "$eth_dev")
         if ! errormsg=$(ethtool -l "$eth_dev" 2>&1); then
@@ -250,9 +283,14 @@ function set_net_devs {
         fi
         echo "Found gVNIC device: $eth_dev"
         set_gvnic_channels
+        echo "num_channels=$num_channels"
+        found_channels="true"
       done
-      # apply affinity_hint to all gvnic IRQs
-      set_gvnic_irq
+
+      if [[ "$found_channels" == "true" ]]; then
+        # apply affinity_hint to all gvnic IRQs
+        set_gvnic_irq
+      fi
     done
   fi
   set_xps
