@@ -25,7 +25,7 @@ set -x -e -o pipefail
 VIRTIO_NET_DIR=/sys/bus/virtio/drivers/virtio_net
 VIRTIO_NET_DEVS=${VIRTIO_NET_DIR}/virtio*
 GVNIC_DIR=/sys/bus/pci/drivers/gvnic
-if [ ! -d "$GVNIC_DIR" ]; then
+if [ ! -d "${GVNIC_DIR}" ]; then
   GVNIC_DIR=/sys/bus/pci/drivers/gve
 fi
 IRQ_DIR=/proc/irq/*
@@ -75,21 +75,21 @@ function set_virtionet_channels() {
   numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
   if [[ ${nr_per_socket} -gt ${numa0_threshold} ]]; then num_channels=${nr_per_socket}; fi
 
-  echo "Set channels for $eth_dev to $num_channels."
+  echo "Set channels for ${eth_dev} to ${num_channels}."
 
   rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
-  if [[ "$rx_channels" -ne "$num_channels" ]]; then
+  if [[ "${rx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
   fi
 
   tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
-  if [[ "$tx_channels" -ne "$num_channels" ]]; then
+  if [[ "${tx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
   fi
 }
 
 function set_virtionet_irq() {
-  dev=$(basename "$dev")
+  dev=$(basename "${dev}")
   for irq in ${IRQ_DIR}
   do
     smp_affinity="${irq}/smp_affinity_list"
@@ -112,13 +112,13 @@ function set_virtionet_irq() {
     # Not virtionet intx, probe for MSI-X
     virtionet_msix_found=0
     for entry in ${irq}/${dev}*; do
-      if [[ "$entry" =~ ${virtionet_msix_dir_regex} ]]; then
+      if [[ "${entry}" =~ ${virtionet_msix_dir_regex} ]]; then
         virtionet_msix_found=1
         queue_num=${BASH_REMATCH[2]}
       fi
     done
     affinity_hint="${irq}/affinity_hint"
-    if [[ "$virtionet_msix_found" -eq 0 || ! -f "${affinity_hint}" ]]; then continue; fi
+    if [[ "${virtionet_msix_found}" -eq 0 || ! -f "${affinity_hint}" ]]; then continue; fi
 
     # HPC workloads can have high throughput on a smaller number of flows.
     # Assign more than one CPU (when available) for each IRQ to mitigate the
@@ -153,15 +153,18 @@ function set_gvnic_channels() {
   numa0_threshold=$(echo ${max_channels}*0.8/1 | bc)
   if [[ $((nr_per_socket/2)) -gt ${numa0_threshold} ]]; then num_channels=$((nr_per_socket/2)); fi
 
-  echo "Set channels for $eth_dev to $num_channels."
+  # make sure we don't exceed max_channels
+  if [[ "${num_channels}" -gt "${max_channels}" ]]; then num_channels=${max_channels}; fi
+
+  echo "Set channels for ${eth_dev} to ${num_channels}."
 
   rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
-  if [[ "$rx_channels" -ne "$num_channels" ]]; then
+  if [[ "${rx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
   fi
 
   tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
-  if [[ "$tx_channels" -ne "$num_channels" ]]; then
+  if [[ "${tx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
   fi
 }
@@ -182,7 +185,7 @@ function set_gvnic_irq() {
       fi
       hint=$(cat "${i}/smp_affinity_list")
       # Adjust for EPYC processors
-      if [[ ${is_epyc} == "true" ]] && [[ "$hint" -eq "$hint" ]] 2>/dev/null; then
+      if [[ ${is_epyc} == "true" ]] && [[ "${hint}" -eq "${hint}" ]] 2>/dev/null; then
         [ ${hint} -eq 0 ] && txrx=$((txrx+1))
         irq_dwords=()
         irq=0
@@ -205,7 +208,7 @@ function set_gvnic_irq() {
     fi
   done
 
-  if [[ "$found" != "true" ]]; then
+  if [[ "${found}" != "true" ]]; then
     echo "Failed to find any gvNIC queues"
     exit 1
   fi
@@ -216,9 +219,9 @@ function set_xps {
 
   # If we have more CPUs than queues, then stripe CPUs across tx affinity
   # as CPUNumber % queue_count.
-  for q in $XPS; do
+  for q in ${XPS}; do
     queue_re=".*tx-([0-9]+).*$"
-    if [[ "$q" =~ ${queue_re} ]]; then
+    if [[ "${q}" =~ ${queue_re} ]]; then
       queue_num=${BASH_REMATCH[1]}
     fi
 
@@ -240,8 +243,8 @@ function set_xps {
     [[ ! -z ${xps} ]] && xps_dwords=($(printf "%08x" $((xps & 0xffffffff))) "${xps_dwords[@]}")
 
     xps_string=$(IFS=, ; echo "${xps_dwords[*]}")
-    echo "${xps_string}" > "$q"
-    printf "Queue %d XPS=%s for %s\n" "$queue_num" "$(cat "$q")" "$q"
+    echo "${xps_string}" > "${q}"
+    printf "Queue %d XPS=%s for %s\n" "${queue_num}" "$(cat "${q}")" "${q}"
   done
 }
 
@@ -251,43 +254,49 @@ function set_net_devs {
     exit 1
   fi
 
-  if [[ -d "$VIRTIO_NET_DIR" ]]; then
+  if [[ -d "${VIRTIO_NET_DIR}" ]]; then
     # Loop through all the virtionet devices and enable multi-queue
-    for dev in $VIRTIO_NET_DEVS; do
+    for dev in ${VIRTIO_NET_DEVS}; do
       ETH_DEVS="${dev}/net/*"
-      for eth_dev in $ETH_DEVS; do
-        eth_dev=$(basename "$eth_dev")
-        if ! errormsg=$(ethtool -l "$eth_dev" 2>&1); then
-          echo "ethtool says that $eth_dev does not support virtionet multiqueue: $errormsg."
+      for eth_dev in ${ETH_DEVS}; do
+        if [[ ! -e "${eth_dev}" ]]; then
           continue
         fi
-        echo "Found virtio-net device: $eth_dev"
+        eth_dev=$(basename "${eth_dev}")
+        if ! errormsg=$(ethtool -l "${eth_dev}" 2>&1); then
+          echo "ethtool says that ${eth_dev} does not support virtionet multiqueue: ${errormsg}."
+          continue
+        fi
+        echo "Found virtio-net device: ${eth_dev}"
         set_virtionet_channels
         set_virtionet_irq
       done
     done
   fi
 
-  if [[ -d "$GVNIC_DIR" ]]; then
+  if [[ -d "${GVNIC_DIR}" ]]; then
     GVNIC_DEVS=$(compgen -G "${GVNIC_DIR}/*")
 
     # Loop through all the GVNIC devices
-    for dev in $GVNIC_DEVS; do
+    for dev in ${GVNIC_DEVS}; do
       ETH_DEVS="${dev}/net/*"
       found_channels="false"
-      for eth_dev in $ETH_DEVS; do
-        eth_dev=$(basename "$eth_dev")
-        if ! errormsg=$(ethtool -l "$eth_dev" 2>&1); then
-          echo "ethtool says that $eth_dev does not support gVNIC multiqueue: $errormsg."
+      for eth_dev in ${ETH_DEVS}; do
+        if [[ ! -e "${eth_dev}" ]]; then
           continue
         fi
-        echo "Found gVNIC device: $eth_dev"
+        eth_dev=$(basename "${eth_dev}")
+        if ! errormsg=$(ethtool -l "${eth_dev}" 2>&1); then
+          echo "ethtool says that ${eth_dev} does not support gVNIC multiqueue: ${errormsg}."
+          continue
+        fi
+        echo "Found gVNIC device: ${eth_dev}"
         set_gvnic_channels
-        echo "num_channels=$num_channels"
+        echo "num_channels=${num_channels}"
         found_channels="true"
       done
 
-      if [[ "$found_channels" == "true" ]]; then
+      if [[ "${found_channels}" == "true" ]]; then
         # apply affinity_hint to all gvnic IRQs
         set_gvnic_irq
       fi
@@ -296,6 +305,6 @@ function set_net_devs {
   set_xps
 }
 
-echo "Running $(basename "$0")."
+echo "Running $(basename "${0}")."
 get_phy_cpus
 set_net_devs

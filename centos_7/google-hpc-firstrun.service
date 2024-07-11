@@ -1,13 +1,13 @@
 [Unit]
 Description=Google HPC First Boot Script
 After=network.target
-Before=getty.target google-guest-agent.service
+Before=getty.target google-guest-agent.service google-osconfig-agent.service yum-cron.service
 ConditionPathExists=/.google_hpc_firstrun
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/google_hpc_firstrun
-TimeoutStartSec=600
+TimeoutStartSec=1200
 
 [Install]
 WantedBy=default.target

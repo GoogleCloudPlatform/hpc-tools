@@ -28,8 +28,39 @@ FIRSTRUN="/.google_hpc_firstrun"
 
 function get_attributes()
 {
-  MPI_TUNE="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_mpi_tuning)"
-  INSTALL_INTELMPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_intelmpi)"
+  # Check if the metadata server is up.
+  attempts=8
+  for i in $(seq 1 $attempts); do
+    echo "Checking connectivity to metadata server - attempt #$((i)) of $attempts"
+    sleep $(( 2**i ))
+
+    exit_code=0
+    curl --max-time $MAXTIME --retry 5 --retry-connrefused -f -H Metadata-Flavor:Google ${URL}/ || exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+      break
+    fi
+
+    echo "Metadata server is not up yet after attempt $i/$attempts (exit_code=$exit_code)..."
+  done
+
+  if [[ $exit_code -ne 0 ]]; then
+    echo "Metadata server is not up after $attempts attempts."
+    exit $exit_code
+  fi
+
+  MPI_TUNE="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_mpi_tuning || true)"
+  INSTALL_INTELMPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_intelmpi || true)"
+  DISABLE_AUTOMATIC_UPDATES="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_disable_automatic_updates || true)"
+}
+
+function disable_automatic_updates()
+{
+  if [[ ${DISABLE_AUTOMATIC_UPDATES} == "TRUE" ]]; then
+     echo "Disable automatic updates: google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}"
+     google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}
+  else
+     echo "Automatic updates were not disabled through metadata."
+  fi
 }
 
 function install_intelmpi()
@@ -56,5 +87,6 @@ function mpi_tuning()
 rm -f ${FIRSTRUN}
 echo "Google HPC startup firstrun operation."
 get_attributes
+disable_automatic_updates
 install_intelmpi
 mpi_tuning

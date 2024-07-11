@@ -53,6 +53,7 @@ install -p -m 0644 google-hpc-multiqueue.service %{buildroot}%{_unitdir}/google-
 install -p -m 0755 google_hpc_firstrun %{buildroot}%{_bindir}/google_hpc_firstrun
 install -p -m 0644 google-hpc-firstrun.service %{buildroot}%{_unitdir}/google-hpc-firstrun.service
 install -p -m 0755 google_install_intelmpi %{buildroot}%{_bindir}/google_install_intelmpi
+install -p -m 0755 google_disable_automatic_updates %{buildroot}%{_bindir}/google_disable_automatic_updates
 install -d %{buildroot}%{_datadir}/google-hpc-compute
 cp -ar libfabric %{buildroot}%{_datadir}/google-hpc-compute/
 cp -ar vmroot %{buildroot}%{_datadir}/google-hpc-compute/mpi-tuning
@@ -73,6 +74,7 @@ install -p -m 0644 vmroot/usr/lib/tuned/google-hpc-compute-throughput/tuned.conf
 %{_bindir}/google_hpc_firstrun
 %{_unitdir}/google-hpc-firstrun.service
 %{_bindir}/google_install_intelmpi
+%{_bindir}/google_disable_automatic_updates
 %{_datadir}/google-hpc-compute/*
 %{_sysconfdir}/security/limits.d/98-google-hpc-image.conf
 %{_sysconfdir}/NetworkManager/dispatcher.d/30-disable-gvnic-coalesce
