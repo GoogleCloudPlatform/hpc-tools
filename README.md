@@ -107,7 +107,7 @@ The following options are available
     --dryrun             Do not execute commands
     --install_dir <path> Configure the prefix directory for installations
                          Default location is set to /opt/intel
-    --impi_2021          Install Intel(R) MPI 2021.11 (Recommended version
+    --impi_2021          Install Intel(R) MPI 2021.13 (Recommended version
                          for running MPI jobs on Google Cloud)
 ```
 

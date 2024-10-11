@@ -77,12 +77,12 @@ function set_virtionet_channels() {
 
   echo "Set channels for ${eth_dev} to ${num_channels}."
 
-  rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
+  rx_channels=$(ethtool -l "${eth_dev}" | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
   if [[ "${rx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
   fi
 
-  tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
+  tx_channels=$(ethtool -l "${eth_dev}" | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
   if [[ "${tx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
   fi
@@ -158,12 +158,12 @@ function set_gvnic_channels() {
 
   echo "Set channels for ${eth_dev} to ${num_channels}."
 
-  rx_channels=$(ethtool -l eth0 | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
+  rx_channels=$(ethtool -l "${eth_dev}" | grep -m 1 RX | cut -d':' -f2 | tr -d '[:space:]')
   if [[ "${rx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" rx "${num_channels}" 2>&1
   fi
 
-  tx_channels=$(ethtool -l eth0 | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
+  tx_channels=$(ethtool -l "${eth_dev}" | grep -m 1 TX | cut -d':' -f2 | tr -d '[:space:]')
   if [[ "${tx_channels}" -ne "${num_channels}" ]]; then
     ethtool -L "${eth_dev}" tx "${num_channels}" 2>&1
   fi
