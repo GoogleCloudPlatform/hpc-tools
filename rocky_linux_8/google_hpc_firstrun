@@ -56,20 +56,20 @@ function get_attributes()
 function disable_automatic_updates()
 {
   if [[ ${DISABLE_AUTOMATIC_UPDATES} == "TRUE" ]]; then
-     echo "Disable automatic updates: google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}"
-     google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}
+    echo "Disable automatic updates: google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}"
+    google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}
   else
-     echo "Automatic updates were not disabled through metadata."
+    echo "Automatic updates were not disabled through metadata."
   fi
 }
 
 function install_intelmpi()
 {
   if [[ ${INSTALL_INTELMPI} ]]; then
-     echo "Install MPI environment: google_install_intelmpi ${INSTALL_INTELMPI}"
-     google_install_intelmpi ${INSTALL_INTELMPI}
+    echo "Install MPI environment: google_install_intelmpi ${INSTALL_INTELMPI}"
+    google_install_intelmpi ${INSTALL_INTELMPI}
   else
-     echo "No MPI environment configured through metadata."
+    echo "No MPI environment configured through metadata."
   fi
 }
 
@@ -77,10 +77,10 @@ function install_intelmpi()
 function mpi_tuning()
 {
   if [[ ${MPI_TUNE} ]]; then
-     echo "MPI tuning configuration: google_mpi_tuning ${MPI_TUNE}"
-     google_mpi_tuning ${MPI_TUNE}
+    echo "MPI tuning configuration: google_mpi_tuning ${MPI_TUNE}"
+    google_mpi_tuning ${MPI_TUNE}
   else
-     echo "No MPI tuning configured through metadata."
+    echo "No MPI tuning configured through metadata."
   fi
 }
 
