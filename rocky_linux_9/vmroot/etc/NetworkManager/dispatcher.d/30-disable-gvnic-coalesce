@@ -1,0 +1,42 @@
+#!/bin/bash
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -x
+
+# This script is called by NetworkManager for each network interface
+# when a relevant event occurs.
+#
+# The script is passed the interface name as the first argument, and
+# the event type as the second argument.
+#
+# The script should exit with a status of 0 to indicate success, or
+# any other value to indicate failure.
+#
+# In this script, we disable coalescing for gVNIC interfaces.
+INTERFACE="$1"
+EVENT="$2"
+
+# Interface name is "none" for the "hostname" event, and
+# empty for "connectivity-change" and "dns-change" events
+if [[ -z "$INTERFACE" ]] || [[ "$INTERFACE" == "none" ]]; then
+  echo "Script called without supplying an interface name for event: $EVENT"
+  exit 0
+fi
+
+if [[ $(ethtool -i $INTERFACE | sed -n 's/^driver:\s*//p') == 'gve' ]]
+   then
+     ethtool -C $INTERFACE rx-usecs 0
+     ethtool -C $INTERFACE tx-usecs 0
+fi

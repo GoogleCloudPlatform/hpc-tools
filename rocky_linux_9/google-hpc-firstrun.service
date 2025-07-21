@@ -1,0 +1,13 @@
+[Unit]
+Description=Google HPC First Boot Script
+After=network.target
+Before=getty.target google-guest-agent.service google-osconfig-agent.service dnf-automatic.service dnf-makecache.service dnf-automatic.timer dnf-makecache.timer
+ConditionPathExists=/.google_hpc_firstrun
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/google_hpc_firstrun
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=default.target

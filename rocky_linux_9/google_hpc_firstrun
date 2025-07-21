@@ -1,0 +1,92 @@
+#!/bin/bash
+# Copyright 2021 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This script is for the startup firstrun to configure software environment.
+# It reads metadata from its compute engine metadata server and conducts the
+# following operations:
+# - MPI environment set up: use google_install_mpi to install MPI software
+# - MPI tuning set up: use google_mpi_tuning to apply system tunings for getting
+#  better performance for MPI application.
+
+set -x -e -o pipefail
+
+URL="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
+MAXTIME=1
+FIRSTRUN="/.google_hpc_firstrun"
+
+function get_attributes()
+{
+  # Check if the metadata server is up.
+  attempts=8
+  for i in $(seq 1 $attempts); do
+    echo "Checking connectivity to metadata server - attempt #$((i)) of $attempts"
+    sleep $(( 2**i ))
+
+    exit_code=0
+    curl --max-time $MAXTIME --retry 5 --retry-connrefused -f -H Metadata-Flavor:Google ${URL}/ || exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+      break
+    fi
+
+    echo "Metadata server is not up yet after attempt $i/$attempts (exit_code=$exit_code)..."
+  done
+
+  if [[ $exit_code -ne 0 ]]; then
+    echo "Metadata server is not up after $attempts attempts."
+    exit $exit_code
+  fi
+
+  MPI_TUNE="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_mpi_tuning || true)"
+  INSTALL_INTELMPI="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_install_intelmpi || true)"
+  DISABLE_AUTOMATIC_UPDATES="$(curl --max-time $MAXTIME -f -s -H Metadata-Flavor:Google ${URL}/google_disable_automatic_updates || true)"
+}
+
+function disable_automatic_updates()
+{
+  if [[ ${DISABLE_AUTOMATIC_UPDATES} == "TRUE" ]]; then
+    echo "Disable automatic updates: google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}"
+    google_disable_automatic_updates ${DISABLE_AUTOMATIC_UPDATES}
+  else
+    echo "Automatic updates were not disabled through metadata."
+  fi
+}
+
+function install_intelmpi()
+{
+  if [[ ${INSTALL_INTELMPI} ]]; then
+    echo "Install MPI environment: google_install_intelmpi ${INSTALL_INTELMPI}"
+    google_install_intelmpi ${INSTALL_INTELMPI}
+  else
+    echo "No MPI environment configured through metadata."
+  fi
+}
+
+
+function mpi_tuning()
+{
+  if [[ ${MPI_TUNE} ]]; then
+    echo "MPI tuning configuration: google_mpi_tuning ${MPI_TUNE}"
+    google_mpi_tuning ${MPI_TUNE}
+  else
+    echo "No MPI tuning configured through metadata."
+  fi
+}
+
+rm -f ${FIRSTRUN}
+echo "Google HPC startup firstrun operation."
+get_attributes
+disable_automatic_updates
+install_intelmpi
+mpi_tuning

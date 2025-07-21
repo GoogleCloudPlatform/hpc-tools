@@ -1,0 +1,14 @@
+[Unit]
+Description=Google HPC Multiqueue Script
+Wants=network-online.target rsyslog.service
+After=network-online.target rsyslog.service google-guest-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/google_hpc_multiqueue
+#TimeoutStartSec is ignored for Type=oneshot service units.
+KillMode=process
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
